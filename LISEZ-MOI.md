@@ -1,4 +1,4 @@
-﻿# 🎵 YueStudio — créer de la musique en local avec YuE2-3B
+# 🎵 YueStudio — créer de la musique en local avec YuE2-3B
 
 Application simple pour générer des chansons complètes (voix + instruments, 48 kHz stéréo)
 **entièrement sur votre PC**, avec le modèle ouvert [m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B)
@@ -154,7 +154,8 @@ chansons à l'avance :
 
 Pendant qu'une file tourne, le bouton Générer est verrouillé (un seul morceau à la fois) :
 le message propose d'ajouter à la file plutôt. La file vit dans l'onglet du navigateur :
-elle n'est pas conservée si vous fermez YueStudio.
+elle n'est pas conservée si vous fermez YueStudio — c'est pourquoi le navigateur demande
+confirmation avant un rechargement ou une fermeture tant qu'une génération ou une file attend.
 
 ### Carte « 🤖 Préparer avec une IA » (colonne de droite)
 
@@ -305,7 +306,7 @@ Tous les cas de figure sont couverts :
 | Croix de la fenêtre | arrêt complet, modèle déchargé |
 | `Ctrl+C` dans la fenêtre | idem |
 | Fermeture de session Windows / extinction du PC | idem (gestionnaire `SetConsoleCtrlHandler`) |
-| Fermeture de l'**onglet du navigateur** | la VRAM est libérée, le moteur reste chaud (rechargement immédiat si vous revenez) |
+| Fermeture de l'**onglet du navigateur** | la VRAM est libérée après un délai de grâce de 5 s, le moteur reste chaud (rechargement immédiat si vous revenez) — un simple **F5** annule le déchargement, et rien n'est déchargé pendant une génération |
 | 30 minutes sans générer | le moteur décharge le modèle tout seul (`idle_unload_ms`) |
 | Bouton 🧹 *Libérer la VRAM* | déchargement à la demande, sans rien fermer |
 
