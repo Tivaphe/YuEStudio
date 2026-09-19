@@ -5,5 +5,20 @@ Déposez ici le fichier WAV d'exemple référencé par les README :
 (morceau « cyber », instrumental synthwave généré en local par YueStudio).
 Une fois le fichier copié, le lien « Écouter un exemple » des README fonctionne.
 
+Fichiers dérivés, déjà présents et à régénérer si le WAV change :
+
+    2026-09-19_135052_cyber.mp3        lecture web rapide (vignette du README, page démo)
+    2026-09-19_135052_cyber-demo.mp4   lecteur intégrable au README (forme d'onde animée + son)
+    cyber-cover.png                    vignette cliquable des README
+
+Pour publier un lecteur qui joue directement sur la page GitHub du projet (ou une page
+lecteur hébergée), suivez docs/exemples/PUBLIER-LA-DEMO.md (30 secondes à 1 minute).
+
 Place here the example WAV file referenced by the readmes:
 2026-09-19_135052_cyber.wav ("cyber", a synthwave instrumental generated locally by YueStudio).
+
+Derived files, already present — regenerate them if the WAV changes:
+2026-09-19_135052_cyber.mp3 (fast web playback), 2026-09-19_135052_cyber-demo.mp4 (inline
+README player: animated waveform + sound), cyber-cover.png (clickable cover).
+To publish a player that plays right on the GitHub project page (or a hosted player page),
+follow docs/exemples/PUBLIER-LA-DEMO.md (30 seconds to 1 minute).

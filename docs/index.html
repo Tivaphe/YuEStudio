@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YueStudio — écouter « cyber »</title>
+<meta name="description" content="Démo audio de YueStudio : « cyber », instrumental synthwave généré 100 % en local par YuE2-3B + audio.cpp.">
+<link rel="icon" href="../app/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #0d1117; --card: #161d27; --card-2: #1b2431;
+    --text: #e6edf3; --muted: #9aa4b2;
+    --accent: #7c5cff; --accent-2: #22d3ee; --pink: #f472b6;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #eef1f6; --card: #ffffff; --card-2: #f4f7fb; --text: #1c2330; --muted: #5b6472; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    background:
+      radial-gradient(1100px 500px at 50% -10%, rgba(124, 92, 255, .28), transparent 60%),
+      radial-gradient(900px 420px at 85% 110%, rgba(34, 211, 238, .16), transparent 60%),
+      var(--bg);
+    font: 16px/1.55 system-ui, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 28px 16px;
+  }
+  main { width: min(760px, 100%); }
+  .card {
+    background: var(--card); border: 1px solid rgba(124, 92, 255, .35);
+    border-radius: 18px; padding: 26px 26px 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  }
+  header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  header img {
+    width: 118px; height: 66px; object-fit: cover; border-radius: 10px;
+    border: 1px solid rgba(34, 211, 238, .5);
+  }
+  h1 { margin: 0; font-size: 26px; letter-spacing: .3px; }
+  h1 span {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  audio { width: 100%; margin: 20px 0 6px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .chip {
+    font-size: 12.5px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, .45); color: var(--accent-2);
+    background: rgba(34, 211, 238, .08);
+  }
+  .recipe { margin-top: 16px; font-size: 14.5px; }
+  .recipe code {
+    display: block; white-space: pre-wrap; background: var(--card-2);
+    border: 1px solid rgba(255, 255, 255, .08); border-radius: 10px;
+    padding: 10px 12px; margin: 6px 0 0; font-size: 13.5px; color: var(--text);
+  }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  a.btn {
+    text-decoration: none; color: #fff; font-weight: 600; font-size: 14px;
+    padding: 10px 16px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #5b8cff 55%, var(--accent-2));
+  }
+  a.btn.ghost {
+    background: transparent; color: var(--accent-2);
+    border: 1px solid rgba(34, 211, 238, .5);
+  }
+  .note { color: var(--muted); font-size: 12.5px; margin-top: 14px; }
+  .lang { float: right; }
+  .lang button {
+    cursor: pointer; font-size: 12.5px; color: var(--muted); background: var(--card-2);
+    border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 4px 9px;
+  }
+  .lang button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <div class="lang" role="group" aria-label="Langue / Language">
+      <button id="btn-fr" aria-pressed="true" onclick="setLang('fr')">🇷 FR</button>
+      <button id="btn-en" aria-pressed="false" onclick="setLang('en')">🇬 EN</button>
+    </div>
+    <header>
+      <img src="exemples/cyber-cover.png" alt="">
+      <div>
+        <h1>🎵 <span>cyber</span> — YueStudio</h1>
+        <div class="sub" id="sub">Instrumental synthwave · 2:06 · généré 100 % en local (YuE2-3B + audio.cpp)</div>
+      </div>
+    </header>
+
+    <audio id="player" controls preload="metadata">
+      <source src="exemples/2026-09-19_135052_cyber.mp3" type="audio/mpeg">
+      <source src="exemples/2026-09-19_135052_cyber.wav" type="audio/wav">
+      <span id="noaudio">Votre navigateur ne peut pas lire ce fichier audio :</span>
+      <a href="exemples/2026-09-19_135052_cyber.mp3">cyber.mp3</a>
+    </audio>
+
+    <div class="chips">
+      <span class="chip" id="chip1">sans compte</span>
+      <span class="chip" id="chip2">sans cloud</span>
+      <span class="chip" id="chip3">sans abonnement</span>
+      <span class="chip">[instrumental]</span>
+    </div>
+
+    <div class="recipe">
+      <strong id="lbl-style">Style</strong>
+      <code>Synthwave années 80, basse, nappes, rythme entraînant, chill</code>
+      <strong id="lbl-lyrics" style="display:block;margin-top:10px">Paroles</strong>
+      <code>[instrumental]</code>
+    </div>
+
+    <div class="actions">
+      <a class="btn ghost" id="dl-mp3" href="exemples/2026-09-19_135052_cyber.mp3" download>⬇️ MP3 (2,4 Mo)</a>
+      <a class="btn ghost" id="dl-wav" href="exemples/2026-09-19_135052_cyber.wav" download>⬇️ WAV (23 Mo)</a>
+      <a class="btn" id="repo" href="https://github.com/Tivaphe/YuEStudio">GitHub → YueStudio</a>
+    </div>
+
+    <p class="note" id="note">
+      Ce morceau a été composé et joué entièrement sur un PC courant (i5-11400, 32 Go de RAM,
+      RTX 2000 Ada 16 Go). Reproduisez-le chez vous avec la recette ci-dessus.
+    </p>
+  </div>
+</main>
+
+<script>
+  var I18N = {
+    fr: {
+      sub: "Instrumental synthwave · 2:06 · généré 100 % en local (YuE2-3B + audio.cpp)",
+      chip1: "sans compte", chip2: "sans cloud", chip3: "sans abonnement",
+      "lbl-style": "Style", "lbl-lyrics": "Paroles",
+      "dl-mp3": "⬇️ MP3 (2,4 Mo)", "dl-wav": "⬇️ WAV (23 Mo)",
+      note: "Ce morceau a été composé et joué entièrement sur un PC courant (i5-11400, 32 Go de RAM, RTX 2000 Ada 16 Go). Reproduisez-le chez vous avec la recette ci-dessus.",
+      noaudio: "Votre navigateur ne peut pas lire ce fichier audio :",
+      title: "YueStudio — écouter « cyber »"
+    },
+    en: {
+      sub: "Synthwave instrumental · 2:06 · generated 100 % on-device (YuE2-3B + audio.cpp)",
+      chip1: "no account", chip2: "no cloud", chip3: "no subscription",
+      "lbl-style": "Style", "lbl-lyrics": "Lyrics",
+      "dl-mp3": "⬇️ MP3 (2.4 MB)", "dl-wav": "⬇️ WAV (23 MB)",
+      note: "This track was composed and performed entirely on an ordinary PC (i5-11400, 32 GB RAM, RTX 2000 Ada 16 GB). Replay it at home with the recipe above.",
+      noaudio: "Your browser cannot play this audio file:",
+      title: "YueStudio — listen to “cyber”"
+    }
+  };
+  function setLang(l) {
+    var t = I18N[l];
+    for (var id in t) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = t[id];
+    }
+    document.documentElement.lang = l;
+    document.title = t.title;
+    document.getElementById("btn-fr").setAttribute("aria-pressed", l === "fr");
+    document.getElementById("btn-en").setAttribute("aria-pressed", l === "en");
+    try { localStorage.setItem("yuestudio-demo-lang", l); } catch (e) {}
+  }
+  try {
+    var saved = localStorage.getItem("yuestudio-demo-lang");
+    if (saved === "en") setLang("en");
+  } catch (e) {}
+</script>
+</body>
+</html>

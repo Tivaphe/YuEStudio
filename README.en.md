@@ -36,8 +36,26 @@ Light theme and French interface at a glance:
 The track **"cyber"** was composed and performed entirely **on-device** by the model, on an ordinary PC
 (i5-11400, 32 GB RAM, RTX 2000 Ada 16 GB). No account, no cloud, no subscription:
 
-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — a synthwave
-  instrumental, WAV download (GitHub cannot play audio inside a README: click, download, listen).
+<!-- ════════════════════════════════════════════════════════════════════════════
+     INLINE PLAYER — one-time, 30-second setup.
+     GitHub strips <audio> tags from READMEs: the only native player comes from a
+     media file uploaded through GitHub's own browser uploader. Edit this file on
+     github.com (pencil ✏️), drag & drop docs/exemples/2026-09-19_135052_cyber-demo.mp4
+     (2.9 MB, animated waveform + sound) onto the “PLAYER” line below, then keep ONLY
+     the bare https://github.com/user-attachments/assets/xxxxxxxx URL on its own line
+     (no markdown link, no tag): GitHub then turns it into a player shown right here.
+     Full walkthrough (plus hosted player page): docs/exemples/PUBLIER-LA-DEMO.md
+     ════════════════════════════════════════════════════════════════════════════ -->
+<!-- PLAYER: paste the user-attachments URL here, alone on its own line -->
+
+[![Listen to an extract of "cyber" — synthwave instrumental generated on-device](docs/exemples/cyber-cover.png)](https://raw.githubusercontent.com/Tivaphe/YuEStudio/main/docs/exemples/2026-09-19_135052_cyber.mp3)
+
+- ▶️ **Click the cover**: the track plays in your browser tab (MP3, 2.4 MB), nothing to download;
+  the [demo page](docs/index.html) offers a full player (publish it through GitHub Pages,
+  see [docs/exemples/PUBLIER-LA-DEMO.md](docs/exemples/PUBLIER-LA-DEMO.md)).
+- ⬇️ Original files: [WAV 48 kHz · 23 MB](docs/exemples/2026-09-19_135052_cyber.wav) ·
+  [MP3 · 2.4 MB](docs/exemples/2026-09-19_135052_cyber.mp3) ·
+  [waveform MP4 · 2.9 MB](docs/exemples/2026-09-19_135052_cyber-demo.mp4).
 - The exact recipe, to replay it on your machine:
   - **Style**: `Synthwave années 80, basse, nappes, rythme entraînant, chill` (French tags work too)
   - **Lyrics**: `[instrumental]` — no text lines, hence no vocals: the model plays instruments only.
@@ -274,7 +292,8 @@ YueStudio/
 ├─ PROMPT-LLM.md          the prompt to give an LLM to write your lyrics
 ├─ README.txt             plain-text version, no formatting
 ├─ docs/screenshots/      README screenshots
-├─ docs/exemples/         "cyber" example track (WAV to drop in)
+├─ docs/index.html        demo page with an audio player (GitHub Pages / local opening)
+├─ docs/exemples/         "cyber" example track (WAV + MP3 + player MP4 + cover)
 │
 ├─ engine/                created at install time: audio.cpp binaries + logs
 ├─ models/Yue2-3B-GGUF/   created at install time: GGUF weights (~3 to 13 GB)

@@ -1,4 +1,4 @@
-﻿# 🎵 YueStudio
+# 🎵 YueStudio
 
 [**English readme →**](README.en.md)
 
@@ -39,9 +39,27 @@ Le thème clair et l'interface anglaise, d'un coup d'œil :
 Le morceau **« cyber »** a été composé et joué entièrement **en local** par le modèle, sur un PC
 courant (i5-11400, 32 Go de RAM, RTX 2000 Ada 16 Go) — sans compte, sans cloud, sans abonnement :
 
-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — instrumental
-  synthwave, WAV à télécharger (GitHub ne sait pas lire l'audio dans un README : cliquez,
-  téléchargez, écoutez).
+<!-- ════════════════════════════════════════════════════════════════════════════
+     LECTEUR INTÉGRÉ — à activer en 30 s, une seule fois.
+     GitHub supprime les balises <audio> des README : le seul lecteur natif possible
+     vient d'un média téléversé depuis le navigateur de GitHub. Ouvrez ce fichier sur
+     github.com avec le crayon ✏️, glissez-déposez le fichier
+     docs/exemples/2026-09-19_135052_cyber-demo.mp4 (2,9 Mo, forme d'onde animée + son)
+     sur la ligne « PLAYER » ci-dessous, puis ne gardez QUE l'URL nue du type
+     https://github.com/user-attachments/assets/xxxxxxxx seule sur sa ligne (sans lien
+     markdown, sans balise) : GitHub la transforme alors en lecteur visible ici même.
+     Pas à pas complet (et page lecteur GitHub Pages) : docs/exemples/PUBLIER-LA-DEMO.md
+     ════════════════════════════════════════════════════════════════════════════ -->
+<!-- PLAYER : coller ici l'URL user-attachments, seule sur sa ligne -->
+
+[![Écouter un extrait de « cyber » — instrumental synthwave généré en local](docs/exemples/cyber-cover.png)](https://raw.githubusercontent.com/Tivaphe/YuEStudio/main/docs/exemples/2026-09-19_135052_cyber.mp3)
+
+- ▶️ **Cliquez sur la pochette** : le morceau démarre dans l'onglet du navigateur (MP3, 2,4 Mo),
+  sans rien télécharger ; la [page démo](docs/index.html) offre un lecteur complet
+  (à publier via GitHub Pages, voir [docs/exemples/PUBLIER-LA-DEMO.md](docs/exemples/PUBLIER-LA-DEMO.md)).
+- ⬇️ Fichiers originaux : [WAV 48 kHz · 23 Mo](docs/exemples/2026-09-19_135052_cyber.wav) ·
+  [MP3 · 2,4 Mo](docs/exemples/2026-09-19_135052_cyber.mp3) ·
+  [MP4 forme d'onde · 2,9 Mo](docs/exemples/2026-09-19_135052_cyber-demo.mp4).
 - La recette exacte, pour la rejouer chez vous :
   - **Style** : `Synthwave années 80, basse, nappes, rythme entraînant, chill`
   - **Paroles** : `[instrumental]` — aucune ligne de texte, donc aucune voix : le modèle ne joue
@@ -283,7 +301,8 @@ YueStudio/
 ├─ PROMPT-LLM.md          le prompt à donner à un LLM pour écrire vos paroles
 ├─ README.txt           version texte brut, sans mise en forme
 ├─ docs/screenshots/    captures d'écran des README
-├─ docs/exemples/       morceau exemple « cyber » (WAV à déposer)
+├─ docs/index.html      page démo avec lecteur audio (GitHub Pages / ouverture locale)
+├─ docs/exemples/       morceau exemple « cyber » (WAV + MP3 + MP4 lecteur + vignette)
 │
 ├─ engine/                créé à l'installation : binaires audio.cpp + journaux
 ├─ models/Yue2-3B-GGUF/   créé à l'installation : poids GGUF (~3 à 13 Go)
@@ -345,7 +364,7 @@ utilisables en un clic sur un PC grand public.
 
 ## 🗺️ Idées d'évolution
 
-- [ ] Capture d'écran et démo audio dans ce README
+- [x] Capture d'écran et démo audio dans ce README (lecteur intégré : [docs/exemples/PUBLIER-LA-DEMO.md](docs/exemples/PUBLIER-LA-DEMO.md))
 - [ ] Génération en file d'attente côté interface (plusieurs morceaux d'affilée)
 - [ ] Édition de la partition ABC avec re-synthèse
 - [ ] Import d'un audio de référence (workflow *cover* de YuE2 : `cot = melody`)
