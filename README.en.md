@@ -77,10 +77,14 @@ GitHub turns it into an inline player with sound.
 Those URLs cannot be crafted by hand: they are minted by **dragging the file into GitHub's web
 editor** (README, issue or comment) while signed in.
 
+Other approaches tested, all ineffective: bare `.mp4` URL on its own line → GitHub merely renders a
+link; image syntax `![…](…mp4)` → broken image; `<video controls>` → stripped from the output, like
+`<audio>`.
+
 The ready-to-drop file is provided:
 [`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
-cover art + AAC audio, 3 MB (the still frame shows the cover, the player carries the sound).
-One-time procedure, from the repository owner's account:
+**6 MB**: cover art + the track's waveform with a progress cursor, plus AAC sound. Open it: that is
+exactly what your visitors will see. One-time procedure, from the repository owner's account:
 
 1. open this README in GitHub's **web editor** (pencil ✏️ button);
 2. **drag** `docs/exemples/cyber-readme-player.mp4` into the text field;

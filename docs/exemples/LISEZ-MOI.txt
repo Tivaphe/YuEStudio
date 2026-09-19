@@ -3,8 +3,9 @@ Fichiers de l'exemple audio « cyber » (instrumental synthwave, généré en lo
     2026-09-19_135052_cyber.wav              24 Mo  original sans perte (48 kHz / 16 bits stéréo, 2 min 06)
     2026-09-19_135052_cyber.mp3               3 Mo  écoute en ligne (192 kbps) — le lien des README
     cyber-cover.jpg                         160 Ko  pochette affichée dans les README (cliquable)
-    cyber-readme-player.mp4                   3 Mo  pochette + audio, à glisser dans l'éditeur GitHub
-                                                     pour obtenir un vrai lecteur dans le README
+    cyber-readme-player.mp4                   6 Mo  vidéo 1280×720 (pochette + forme d'onde + curseur),
+                                                     à glisser dans l'éditeur GitHub pour obtenir un vrai
+                                                     lecteur intégré dans le README
 
 Pourquoi un MP3 pour l'écoute en ligne ? GitHub sert ses fichiers bruts avec l'en-tête
 « Content-Disposition: attachment » : un lien « raw.githubusercontent.com » force donc le
@@ -22,9 +23,12 @@ Commandes de régénération :
 
     ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
     ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
-           -c:v libx264 -preset veryfast -crf 26 -tune stillimage -pix_fmt yuv420p -r 2 \
-           -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720" \
-           -c:a aac -b:a 160k -movflags +faststart -t 126.02 cyber-readme-player.mp4
+           -filter_complex "[0:v]scale=1280:-2,crop=1280:640:0:12,setsar=1[top];\
+               [1:a]showwavespic=s=1280x80:colors=0x2ee6ff|0xff2ea0[w];[top][w]vstack=inputs=2[base];\
+               [base]drawbox=x='min(1276,t*1280/126.02)':y=640:w=3:h=80:color=0xf5f7ff@0.9:t=fill[out]" \
+           -map "[out]" -map 1:a -c:v libx264 -preset slow -crf 24 -tune stillimage \
+           -pix_fmt yuv420p -r 6 -g 60 -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 126.02 \
+           cyber-readme-player.mp4
 
 --- English ---
 
@@ -34,8 +38,9 @@ YueStudio — YuE2-3B):
     2026-09-19_135052_cyber.wav              24 MB  lossless original (48 kHz / 16-bit stereo, 2 min 06)
     2026-09-19_135052_cyber.mp3               3 MB  online listening (192 kbps) — the link used by the readmes
     cyber-cover.jpg                         160 KB  cover art shown in the readmes (clickable)
-    cyber-readme-player.mp4                   3 MB  cover art + audio, to drag into GitHub's editor
-                                                     to get a real player inside the README
+    cyber-readme-player.mp4                   6 MB  1280x720 video (cover art + waveform + cursor),
+                                                     to drag into GitHub's editor to get a real embedded
+                                                     player inside the README
 
 Why an MP3 for online listening? GitHub serves its raw files with a "Content-Disposition:
 attachment" header, so a "raw.githubusercontent.com" link forces a download instead of playback.
@@ -51,6 +56,9 @@ Rebuild commands:
 
     ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
     ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
-           -c:v libx264 -preset veryfast -crf 26 -tune stillimage -pix_fmt yuv420p -r 2 \
-           -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720" \
-           -c:a aac -b:a 160k -movflags +faststart -t 126.02 cyber-readme-player.mp4
+           -filter_complex "[0:v]scale=1280:-2,crop=1280:640:0:12,setsar=1[top];\
+               [1:a]showwavespic=s=1280x80:colors=0x2ee6ff|0xff2ea0[w];[top][w]vstack=inputs=2[base];\
+               [base]drawbox=x='min(1276,t*1280/126.02)':y=640:w=3:h=80:color=0xf5f7ff@0.9:t=fill[out]" \
+           -map "[out]" -map 1:a -c:v libx264 -preset slow -crf 24 -tune stillimage \
+           -pix_fmt yuv420p -r 6 -g 60 -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 126.02 \
+           cyber-readme-player.mp4
