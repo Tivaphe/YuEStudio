@@ -36,8 +36,16 @@ Light theme and French interface at a glance:
 The track **"cyber"** was composed and performed entirely **on-device** by the model, on an ordinary PC
 (i5-11400, 32 GB RAM, RTX 2000 Ada 16 GB). No account, no cloud, no subscription:
 
-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — a synthwave
-  instrumental, WAV download (GitHub cannot play audio inside a README: click, download, listen).
+▶️ **[Listen to "cyber" — plays right in your browser](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
+— synthwave instrumental, **2 min 06**: one click and the track starts on its own in your browser's
+audio player, nothing to install. *(MP3 192 kbps, 3 MB.)*
+
+- 💿 **The same take as a lossless WAV** (24 MB, 48 kHz / 16-bit stereo):
+  [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
+  (download) — both files are versioned in [`docs/exemples/`](docs/exemples).
+- ℹ️ The online playback goes through **jsDelivr**: GitHub serves its raw files with a
+  `Content-Disposition: attachment` header, which forces a download instead of playback. So
+  `raw.githubusercontent.com` links open a "Save as…" dialog rather than the audio.
 - The exact recipe, to replay it on your machine:
   - **Style**: `Synthwave années 80, basse, nappes, rythme entraînant, chill` (French tags work too)
   - **Lyrics**: `[instrumental]` — no text lines, hence no vocals: the model plays instruments only.
@@ -274,7 +282,7 @@ YueStudio/
 ├─ PROMPT-LLM.md          the prompt to give an LLM to write your lyrics
 ├─ README.txt             plain-text version, no formatting
 ├─ docs/screenshots/      README screenshots
-├─ docs/exemples/         "cyber" example track (WAV to drop in)
+├─ docs/exemples/         "cyber" example track (streamable MP3 + lossless WAV)
 │
 ├─ engine/                created at install time: audio.cpp binaries + logs
 ├─ models/Yue2-3B-GGUF/   created at install time: GGUF weights (~3 to 13 GB)

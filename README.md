@@ -1,4 +1,4 @@
-﻿# 🎵 YueStudio
+# 🎵 YueStudio
 
 [**English readme →**](README.en.md)
 
@@ -39,9 +39,17 @@ Le thème clair et l'interface anglaise, d'un coup d'œil :
 Le morceau **« cyber »** a été composé et joué entièrement **en local** par le modèle, sur un PC
 courant (i5-11400, 32 Go de RAM, RTX 2000 Ada 16 Go) — sans compte, sans cloud, sans abonnement :
 
-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — instrumental
-  synthwave, WAV à télécharger (GitHub ne sait pas lire l'audio dans un README : cliquez,
-  téléchargez, écoutez).
+▶️ **[Écouter « cyber » — lecture directe dans le navigateur](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
+— instrumental synthwave, **2 min 06** : un clic et le morceau démarre tout seul dans le lecteur
+audio de votre navigateur, sans rien installer. *(MP3 192 kbps, 3 Mo.)*
+
+- 💿 **La même prise en WAV sans perte** (24 Mo, 48 kHz / 16 bits stéréo) :
+  [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
+  (téléchargement) — les deux fichiers sont versionnés dans
+  [`docs/exemples/`](docs/exemples).
+- ℹ️ Le lecteur en ligne passe par **jsDelivr** : GitHub sert ses fichiers bruts avec un en-tête
+  `Content-Disposition: attachment`, qui force le téléchargement au lieu de la lecture. Les liens
+  du type `raw.githubusercontent.com` ouvrent donc une fenêtre « Enregistrer sous… », pas l'audio.
 - La recette exacte, pour la rejouer chez vous :
   - **Style** : `Synthwave années 80, basse, nappes, rythme entraînant, chill`
   - **Paroles** : `[instrumental]` — aucune ligne de texte, donc aucune voix : le modèle ne joue
@@ -283,7 +291,7 @@ YueStudio/
 ├─ PROMPT-LLM.md          le prompt à donner à un LLM pour écrire vos paroles
 ├─ README.txt           version texte brut, sans mise en forme
 ├─ docs/screenshots/    captures d'écran des README
-├─ docs/exemples/       morceau exemple « cyber » (WAV à déposer)
+├─ docs/exemples/       morceau exemple « cyber » (MP3 d'écoute + WAV sans perte)
 │
 ├─ engine/                créé à l'installation : binaires audio.cpp + journaux
 ├─ models/Yue2-3B-GGUF/   créé à l'installation : poids GGUF (~3 à 13 Go)
