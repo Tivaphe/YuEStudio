@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YueStudio — création de musique locale (YuE2-3B)</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script>
+/* Applique le thème et la langue enregistrés AVANT le premier rendu, pour
+   éviter tout clignotement. Le code complet est dans /i18n.js. */
+(function () {
+  try {
+    var theme = localStorage.getItem('yuestudio.theme') || 'dark';
+    var eff = theme;
+    if (theme === 'system') {
+      eff = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+        ? 'light' : 'dark';
+    }
+    var root = document.documentElement;
+    root.setAttribute('data-theme', eff);
+    root.style.colorScheme = eff;
+    var lang = localStorage.getItem('yuestudio.lang');
+    if (lang === 'en' || lang === 'fr') root.lang = lang;
+  } catch (e) { /* navigation privée */ }
+})();
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>
+      </svg>
+    </span>
+    <div>
+      <h1>YueStudio</h1>
+      <p class="subtitle">Création de chansons en local · modèle YuE2-3B (GGUF)</p>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <div class="topbar-toggles">
+      <button id="btn-theme" class="btn btn-ghost btn-small" type="button" title="Changer de thème (sombre / clair / système)" aria-label="Thème">🌙 Sombre</button>
+      <button id="btn-lang" class="btn btn-ghost btn-small" type="button" title="Passer l’interface en anglais" aria-label="Langue">🇬🇧 English</button>
+    </div>
+    <div id="engine-status" class="status status-unknown" title="État du moteur audio.cpp">
+      <span class="dot"></span><span class="status-text">vérification…</span>
+    </div>
+    <button id="btn-open-folder" class="btn btn-ghost" type="button" title="Ouvrir le dossier des chansons">📁 Mes chansons</button>
+    <button id="btn-unload" class="btn btn-ghost" type="button" title="Décharger le modèle pour libérer la VRAM">🧹 Libérer la VRAM</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab tab-active" id="tab-btn-create" role="tab" aria-selected="true" data-view="create">🎼 Créer une musique</button>
+  <button class="tab" id="tab-btn-history" role="tab" aria-selected="false" data-view="history">🕘 Historique <span id="history-count" class="badge">0</span></button>
+</nav>
+
+<main>
+  <!-- ==================== VUE : CRÉATION ==================== -->
+  <section id="view-create" class="view view-active">
+    <div class="grid-create">
+
+      <form id="form-generate" class="card form-card" autocomplete="off">
+        <h2>Nouvelle chanson</h2>
+
+        <label class="field">
+          <span class="label">Titre de la musique</span>
+          <input type="text" id="f-title" name="title" placeholder="Ex. : Lumières sur la ville" maxlength="120">
+        </label>
+
+        <label class="field">
+          <span class="label">Style <em class="req">obligatoire</em></span>
+          <textarea id="f-style" name="style" rows="3" placeholder="Ex. : French pop, synthés années 80, basse ronde, batterie douce, voix féminine chaleureuse"></textarea>
+          <span class="hint">Décrivez le genre, les instruments, l'ambiance, la voix. Les tags en anglais donnent souvent de meilleurs résultats, mais le français fonctionne.</span>
+          <div class="chips" id="style-chips"></div>
+        </label>
+
+        <div class="field">
+          <span class="label">Paroles <em class="req">obligatoire</em></span>
+          <div class="tagbar" id="tagbar">
+            <span class="tagbar-label">Structures :</span>
+            <button type="button" class="chip" data-tag="[Verse]">[Verse]</button>
+            <button type="button" class="chip" data-tag="[Chorus]">[Chorus]</button>
+            <button type="button" class="chip" data-tag="[Pre-Chorus]">[Pre-Chorus]</button>
+            <button type="button" class="chip" data-tag="[Bridge]">[Bridge]</button>
+            <button type="button" class="chip" data-tag="[Interlude]">[Interlude]</button>
+            <button type="button" class="chip" data-tag="[Intro]">[Intro]</button>
+            <button type="button" class="chip" data-tag="[Outro]">[Outro]</button>
+            <button type="button" class="chip" data-tag="[instrumental]">[instrumental]</button>
+            <button type="button" class="chip chip-alt" id="btn-example">✨ Exemple</button>
+            <button type="button" class="chip chip-alt" id="btn-clear-lyrics">✖ Vider</button>
+          </div>
+          <textarea id="f-lyrics" name="lyrics" rows="12" placeholder="[Verse]
+Les néons s'allument sur le boulevard
+...
+
+[Chorus]
+..."></textarea>
+          <div class="hint-row">
+            <span class="hint">La longueur de la chanson suit la longueur des paroles : plus il y a de couplets, plus le morceau est long.</span>
+            <span class="counter"><span id="lyrics-words">0</span> mots · <span id="lyrics-lines">0</span> lignes</span>
+          </div>
+        </div>
+
+        <details class="advanced" id="advanced">
+          <summary>⚙️ Réglages avancés <span class="hint-inline">(optionnel)</span>
+            <button type="button" class="btn btn-ghost btn-mini" id="btn-reset-advanced"
+                    title="Remettre toutes les valeurs par défaut">↺ Valeurs par défaut</button>
+          </summary>
+          <div class="advanced-grid">
+            <label class="field">
+              <span class="label">Qualité / modèle</span>
+              <select id="f-quality"></select>
+              <span class="hint" id="quality-hint"></span>
+            </label>
+            <label class="field">
+              <span class="label">Planification (partition ABC)</span>
+              <select id="f-cot">
+                <option value="full">Complète — le modèle compose la partition puis chante (recommandé)</option>
+                <option value="melody">Mélodie seule</option>
+                <option value="off">Désactivée — plus rapide, moins structuré</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="label">Graine (seed)</span>
+              <div class="row">
+                <input type="number" id="f-seed" min="0" step="1" placeholder="aléatoire">
+                <button type="button" class="btn btn-ghost btn-small" id="f-seed-lock" title="Fixer la graine">🎲</button>
+              </div>
+              <span class="hint">Même graine + même texte = même chanson. Laissez vide pour varier.
+                <span class="range" data-range="seed"></span></span>
+            </label>
+            <label class="field">
+              <span class="label">Étapes de rendu (NAR)</span>
+              <input type="number" id="f-steps" min="1" max="64" step="1" value="8">
+              <span class="hint" id="steps-hint">8 = défaut. 16 = un peu plus fin, deux fois plus lent.
+                <span class="range" data-range="steps"></span></span>
+            </label>
+            <label class="field">
+              <span class="label">Guidage du style (guidance)</span>
+              <input type="number" id="f-guidance" min="0" max="20" step="0.01" value="0" placeholder="0 = défaut du modèle">
+              <span class="hint">0 laisse le modèle choisir. 1,5–3 renforce le respect du style.
+                <span class="range" data-range="guidance"></span></span>
+            </label>
+            <label class="field">
+              <span class="label">Durée maximale (minutes)</span>
+              <input type="number" id="f-max-duration" min="0.2" max="6" step="0.1" value="0" placeholder="0 = pas de plafond">
+              <span class="hint" id="max-duration-hint">Plafond dur : la chanson s'arrête là même si les paroles continuent. 6 min = maximum du modèle (9000 codes).
+                <span class="range" data-range="maxduration"></span></span>
+            </label>
+            <label class="field">
+              <span class="label">Expressivité du chant (température)</span>
+              <input type="number" id="f-semantic-temperature" min="0.1" max="2" step="0.05" value="0" placeholder="1.0 = défaut">
+              <span class="hint">Plus bas = chant plus stable et articulé ; plus haut = plus de liberté (et de risques).
+                <span class="range" data-range="temperature"></span></span>
+            </label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit" id="btn-generate" class="btn btn-primary btn-big">
+            <span class="btn-label">🎵 Générer la musique</span>
+          </button>
+          <span id="form-message" class="form-message" role="status"></span>
+        </div>
+
+        <div id="progress" class="progress hidden">
+          <div class="progress-head">
+            <span class="spinner" aria-hidden="true"></span>
+            <strong id="progress-title">Génération en cours…</strong>
+            <span id="progress-time" class="mono">0 s</span>
+          </div>
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <ul class="progress-steps" id="progress-steps">
+            <li data-step="send">Envoi de la demande au moteur</li>
+            <li data-step="load">Chargement du modèle en VRAM (1<sup>re</sup> fois seulement)</li>
+            <li data-step="plan">Composition de la partition (ABC) et des codes musicaux</li>
+            <li data-step="render">Rendu acoustique (flow matching) puis décodage VAE 48 kHz</li>
+            <li data-step="save">Enregistrement du fichier et de l'historique</li>
+          </ul>
+          <p class="hint">La première génération est plus lente (chargement du modèle). Ensuite, comptez en général 1 à 4 minutes pour une chanson de 3 minutes sur RTX 2000 Ada.</p>
+          <button type="button" id="btn-cancel" class="btn btn-ghost btn-small">Annuler l'attente</button>
+        </div>
+      </form>
+
+      <section class="card queue-card" id="queue-card">
+        <h2>📋 File d'attente</h2>
+        <p class="hint">Ajoutez plusieurs chansons à la suite : elles seront générées
+        l'une après l'autre, sans surveiller l'écran.</p>
+        <ul id="queue-list" class="queue-list hidden"></ul>
+        <div class="queue-actions">
+          <button type="button" id="btn-queue-add" class="btn btn-ghost">➕ Ajouter à la file</button>
+          <button type="button" id="btn-queue-clear" class="btn btn-ghost btn-small hidden">🗑 Vider la file</button>
+          <span id="queue-summary" class="hint"></span>
+        </div>
+      </section>
+
+      <aside class="side">
+        <div class="card" id="result-card">
+          <h2>Dernier résultat</h2>
+          <div id="result-empty" class="empty">
+            <p>Aucune génération pour le moment.</p>
+            <p class="hint">Remplissez le titre, le style et les paroles, puis cliquez sur « Générer ».</p>
+          </div>
+          <div id="result-body" class="hidden">
+            <h3 id="result-title" class="result-title"></h3>
+            <audio id="result-audio" controls preload="metadata"></audio>
+            <dl class="meta" id="result-meta"></dl>
+            <div class="result-actions">
+              <a id="result-download" class="btn btn-ghost btn-small" download>⬇️ Télécharger</a>
+              <button type="button" class="btn btn-ghost btn-small" id="result-copy-style">📋 Style</button>
+              <button type="button" class="btn btn-ghost btn-small" id="result-copy-lyrics">📋 Paroles</button>
+            </div>
+            <details id="result-score-wrap" class="score-wrap hidden">
+              <summary>🎼 Partition ABC composée par le modèle</summary>
+              <pre id="result-score" class="score"></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="result-copy-score">📋 Copier la partition</button>
+            </details>
+          </div>
+        </div>
+
+        <div class="card ai-card">
+          <h2>🤖 Préparer avec une IA</h2>
+          <p class="hint ai-intro">
+            Décrivez l'idée : un prompt complet, au format exact de YuE2, est copié dans le
+            presse-papiers. Collez-le dans ChatGPT, Claude, Gemini ou Mistral, puis recopiez ici
+            les blocs <strong>STYLE</strong> et <strong>PAROLES</strong> renvoyés.
+          </p>
+
+          <label class="field">
+            <span class="label">Style souhaité</span>
+            <input type="text" id="ai-style" placeholder="Ex. : pop française mélancolique, synthés analogiques, voix féminine douce">
+          </label>
+
+          <label class="field">
+            <span class="label">Sujet de la chanson</span>
+            <textarea id="ai-subject" rows="3" placeholder="Ex. : une femme vide son appartement la veille d'un déménagement et retrouve une boîte de photos"></textarea>
+          </label>
+
+          <div class="ai-row">
+            <label class="field ai-duration">
+              <span class="label">Durée visée</span>
+              <select id="ai-duration">
+                <option value="court (~1 min 30)">Court · ~1 min 30</option>
+                <option value="standard (~3 min)" selected>Standard · ~3 min</option>
+                <option value="long (~4 min 30)">Long · ~4 min 30</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-primary ai-btn" id="btn-ai-copy">📋 Copier le prompt</button>
+          </div>
+          <span class="hint" id="ai-hint">Le prompt sera complété avec votre style et votre sujet.</span>
+          <details class="ai-details">
+            <summary>👁 Voir / copier tout le prompt</summary>
+            <pre id="ai-preview" class="score ai-preview"></pre>
+          </details>
+        </div>
+
+        <div class="card tips">
+          <h2>Conseils</h2>
+          <ul>
+            <li>Le style fonctionne par <strong>tags</strong> séparés par des virgules : genre, instruments, ambiance, type de voix.</li>
+            <li>Structurez les paroles avec <span class="mono">[Verse]</span>, <span class="mono">[Chorus]</span>, <span class="mono">[Bridge]</span> : le modèle s'en sert pour construire la chanson.</li>
+            <li>Pas de refrain ? Ajoutez <span class="mono">[instrumental]</span> dans les paroles.</li>
+            <li>Une génération décevante ? Relancez avec la même grille mais une <strong>graine différente</strong>.</li>
+            <li>Les fichiers sont enregistrés dans <span class="mono">Mes chansons</span> — vous pouvez les copier où vous voulez.</li>
+          </ul>
+          <h2 class="tips-sub">Les 3 règles d'or des paroles</h2>
+          <ol class="tips-rules">
+            <li><strong>Structurez</strong> : <span class="mono">[Verse]</span>, <span class="mono">[Chorus]</span>, <span class="mono">[Bridge]</span>, et laissez <span class="mono">[Intro]</span> / <span class="mono">[Interlude]</span> <strong>vides</strong> pour de l'instrumental.</li>
+            <li><strong>Répétez le refrain mot pour mot</strong> à chaque passage, avec 6 à 10 syllabes par ligne.</li>
+            <li><strong>La durée suit les paroles</strong> : ≈ 10 s par ligne, 6 minutes maximum.</li>
+          </ol>
+          <p class="hint">Guide complet, avec une chanson prête à coller : <span class="mono">GUIDE-PAROLES.md</span> dans le dossier de l'application.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ==================== VUE : HISTORIQUE ==================== -->
+  <section id="view-history" class="view">
+    <div class="card">
+      <div class="history-toolbar">
+        <input type="search" id="h-search" placeholder="🔍 Rechercher un titre, un style, une parole…">
+        <div class="history-buttons">
+          <label class="check"><input type="checkbox" id="h-fav-only"> ⭐ Favoris</label>
+          <a class="btn btn-ghost btn-small" href="/api/export" download>⬇️ Exporter (JSON)</a>
+          <button type="button" class="btn btn-ghost btn-small" id="btn-import">⬆️ Importer</button>
+          <button type="button" class="btn btn-ghost btn-small" id="btn-refresh">🔄 Actualiser</button>
+          <button type="button" class="btn btn-ghost btn-small btn-danger" id="btn-clear-history">🗑 Tout effacer</button>
+        </div>
+        <input type="file" id="import-file" accept="application/json,.json" class="hidden">
+      </div>
+      <p class="hint" id="history-summary"></p>
+    </div>
+
+    <div id="history-list" class="history-list"></div>
+    <div id="history-empty" class="card empty hidden">
+      <p>Aucune génération enregistrée.</p>
+      <p class="hint">Vos chansons apparaîtront ici avec leur style et leurs paroles, copiables et réutilisables.</p>
+    </div>
+  </section>
+</main>
+
+<div id="toast-host" class="toast-host" aria-live="polite"></div>
+
+<footer class="footer">
+  <span>YueStudio · moteur <a href="https://github.com/0xShug0/audio.cpp" target="_blank" rel="noreferrer">audio.cpp</a> · modèle <a href="https://huggingface.co/m-a-p/YuE2-3B" target="_blank" rel="noreferrer">m-a-p/YuE2-3B</a> (GGUF <a href="https://huggingface.co/audio-cpp/Yue2-3B-GGUF" target="_blank" rel="noreferrer">audio-cpp</a>)</span>
+  <span>Poids sous licence CC BY-NC 4.0 — usage non commercial uniquement.</span>
+</footer>
+
+<template id="tpl-history-card">
+  <article class="card hcard">
+    <div class="hcard-head">
+      <div class="hcard-title">
+        <button class="fav" type="button" title="Mettre en favori">☆</button>
+        <h3 class="h-title"></h3>
+      </div>
+      <div class="hcard-badges">
+        <span class="pill h-date"></span>
+        <span class="pill h-duration"></span>
+        <span class="pill h-quality"></span>
+        <span class="pill h-gentime"></span>
+        <span class="pill h-resynth-pill hidden"></span>
+      </div>
+    </div>
+
+    <audio class="h-audio" controls preload="none"></audio>
+
+    <div class="hblock">
+      <div class="hblock-head">
+        <span class="hblock-label">Style</span>
+        <button type="button" class="btn btn-mini copy-style">📋 Copier</button>
+      </div>
+      <pre class="htext h-style"></pre>
+    </div>
+
+    <div class="hblock">
+      <div class="hblock-head">
+        <span class="hblock-label">Paroles</span>
+        <div>
+          <button type="button" class="btn btn-mini toggle-lyrics">👁 Déplier</button>
+          <button type="button" class="btn btn-mini copy-lyrics">📋 Copier</button>
+        </div>
+      </div>
+      <pre class="htext h-lyrics clipped"></pre>
+    </div>
+
+    <details class="hblock h-score hidden">
+      <summary>🎼 Partition ABC</summary>
+      <pre class="htext h-score-text"></pre>
+      <div class="score-actions">
+        <button type="button" class="btn btn-mini copy-score">📋 Copier la partition</button>
+        <button type="button" class="btn btn-mini h-score-edit-open">✏️ Éditer la partition</button>
+      </div>
+      <div class="score-edit hidden">
+        <textarea class="h-score-edit" rows="10" spellcheck="false"></textarea>
+        <div class="score-edit-actions">
+          <label class="hint score-cot-label">Suivre :
+            <select class="h-resynth-cot">
+              <option value="melody">la mélodie seule</option>
+              <option value="full">la partition complète</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-mini h-resynth">🔁 Resynthétiser</button>
+          <button type="button" class="btn btn-ghost btn-small h-resynth-queue">➕ À la file</button>
+          <button type="button" class="btn btn-ghost btn-small h-score-edit-cancel">Annuler</button>
+        </div>
+        <p class="hint">Modifiez la partition puis relancez : le moteur rejoue cette
+        partition au lieu d'en planifier une nouvelle (cot = melody ou full).</p>
+      </div>
+    </details>
+
+    <details class="hblock h-params">
+      <summary>ℹ️ Paramètres</summary>
+      <dl class="meta h-meta"></dl>
+    </details>
+
+    <div class="hcard-actions">
+      <a class="btn btn-ghost btn-small h-download" download>⬇️ Télécharger</a>
+      <button type="button" class="btn btn-ghost btn-small h-reuse">♻️ Réutiliser</button>
+      <button type="button" class="btn btn-ghost btn-small h-regen">🎲 Régénérer</button>
+      <button type="button" class="btn btn-ghost btn-small h-rename">✏️ Renommer</button>
+      <button type="button" class="btn btn-ghost btn-small h-note">📝 Note</button>
+      <button type="button" class="btn btn-ghost btn-small btn-danger h-delete">🗑 Supprimer</button>
+    </div>
+    <p class="h-note-text hidden"></p>
+  </article>
+</template>
+
+<script type="text/plain" id="ai-prompt-template">
+Tu es parolier professionnel et ingénieur de prompt pour YuE2, un modèle local de génération
+de chansons (paroles + style -> chanson complète avec voix et instruments).
+
+Ta tâche : écrire une chanson prête à être générée, à partir du STYLE et du SUJET que je donne.
+
+════════════════════════════════════════════════════════════
+FORMAT DE SORTIE — respecte-le à la lettre
+════════════════════════════════════════════════════════════
+N'écris AUCUN commentaire, aucune introduction, aucune explication, aucun markdown.
+Sors exactement ces trois blocs, séparés par une ligne "-----" :
+
+TITRE :
+<un titre court, 2 à 5 mots, tiré d'une image du refrain>
+-----
+STYLE :
+<une seule ligne : 8 à 15 tags en ANGLAIS, séparés par des virgules>
+-----
+PAROLES :
+<les paroles, avec les balises de structure>
+-----
+DURÉE ESTIMÉE : <x min yy s> — <nombre> lignes chantées
+
+════════════════════════════════════════════════════════════
+RÈGLES POUR LE BLOC « PAROLES »
+════════════════════════════════════════════════════════════
+1. Balises de structure, en ANGLAIS, chacune sur sa ligne seule, entre crochets.
+   Autorisées : [Intro] [Verse] [Pre-Chorus] [Chorus] [Interlude] [Bridge] [Outro]
+   [instrumental] [Solo]
+2. [Intro] et [Interlude] doivent rester VIDES : la balise, puis une ligne vide.
+   C'est ce qui déclenche un passage instrumental.
+3. Le texte de chaque refrain doit être recopié MOT POUR MOT à chaque occurrence.
+4. Chaque refrain = 4 lignes, immédiatement suivies de la répétition exacte de ces
+   4 mêmes lignes (donc 8 lignes au total par bloc [Chorus]).
+5. Une ligne = 6 à 10 syllabes. Toutes les lignes d'une même section ont à peu près
+   la même longueur.
+6. Rimes régulières : AABB ou ABAB. Le refrain doit rimer et fonctionner comme un hook.
+7. [Outro] = 2 à 4 lignes très courtes (1 à 4 mots chacune), lâches, qui s'éteignent.
+8. INTERDIT dans les paroles : didascalies, indications de jeu, parenthèses, étoiles,
+   emojis, chiffres de BPM, noms d'instruments, consignes de mixage, majuscules
+   décoratives, points d'exclamation en série, marques déposées, noms de personnes
+   réelles, noms d'artistes, paroles de chansons existantes.
+9. Langue des paroles : celle du SUJET que je donne. Les balises, elles, restent
+   toujours en anglais.
+10. Aucune ligne ne dépasse 10 syllabes. Pas de mots rares ou techniques : privilégie
+    des mots courants et des voyelles ouvertes (le modèle chante mieux en français sur
+    des mots simples).
+11. Ponctuation minimale : pas de guillemets, pas de points-virgules. La virgule et le
+    point sont acceptés.
+
+════════════════════════════════════════════════════════════
+LONGUEUR — le modèle chante environ 10 secondes par ligne
+════════════════════════════════════════════════════════════
+Suis la durée demandée en bas de ce message.
+Maximum absolu : 6 minutes (le modèle s'arrête de toute façon à 6 min). Minimum : 8 secondes.
+
+  court (~1 min 30) :
+    [Intro] vide, [Verse] 4 lignes, [Chorus] 4+4, [Outro] 2 lignes
+
+  standard (~3 min) :
+    [Intro] vide, [Verse] 4, [Pre-Chorus] 2, [Chorus] 4+4, [Interlude] vide,
+    [Verse] 4, [Chorus] 4+4, [Bridge] 4, [Chorus] 4+4, [Outro] 3
+
+  long (~4 min 30) :
+    [Intro] vide, [Verse] 4, [Pre-Chorus] 2, [Chorus] 4+4, [Verse] 4,
+    [Pre-Chorus] 2, [Chorus] 4+4, [Interlude] vide, [Bridge] 4,
+    [Chorus] 4+4, [Chorus] 4+4, [Outro] 4
+
+════════════════════════════════════════════════════════════
+RÈGLES POUR LE BLOC « STYLE »
+════════════════════════════════════════════════════════════
+Une seule ligne, en anglais, 8 à 15 tags séparés par virgules, dans cet ordre :
+  1. langue + genre            (ex. French pop, English indie folk)
+  2. sous-genre / époque       (ex. 80s, synthwave, neo-soul)
+  3. tempo / énergie           (ex. mid-tempo, upbeat, slow, driving)
+  4. 2 à 4 instruments         (ex. warm analog synth, round bass, brushed drums)
+  5. ambiance / décor          (ex. nostalgic night drive, rainy morning)
+  6. voix                      (ex. breathy female vocal, warm male vocal, duet,
+                                    raspy vocal, clear lead vocal)
+  7. couleur de production     (ex. polished demo mix, analog tape, wide reverb)
+
+Interdit dans le STYLE : phrases complètes, parenthèses, BPM chiffré, références à des
+artistes existants, noms de marques, guillemets.
+Si le SUJET demande un instrumental : écris « instrumental, no vocals » dans le STYLE.
+
+════════════════════════════════════════════════════════════
+FOND — ce qui fait une bonne chanson
+════════════════════════════════════════════════════════════
+- Raconte une histoire précise et incarnée : des images sensorielles (ce qu'on voit,
+  entend, touche), des détails concrets plutôt que des généralités.
+- Le refrain doit résumer l'émotion en une image forte et chantable.
+- Les couplets font avancer le récit ; le pont change de perspective ou de temps.
+- Évite les clichés usés et les rimes forcées qui n'apportent rien au sens.
+- Reste cohérent avec le STYLE demandé : le vocabulaire doit coller à l'univers musical.
+
+════════════════════════════════════════════════════════════
+MA DEMANDE
+════════════════════════════════════════════════════════════
+DURÉE SOUHAITÉE : {{DUREE}}
+STYLE : {{STYLE}}
+SUJET : {{SUJET}}
+
+Réponds uniquement avec les blocs demandés, rien d'autre.
+
+</script>
+
+<script type="text/plain" id="ai-prompt-template-en">
+You are a professional lyricist and a prompt engineer for YuE2, a local song generation
+model (lyrics + style -> full song with vocals and instruments).
+
+Your task: write a song ready to be generated, from the STYLE and SUBJECT given below.
+
+============================================================
+OUTPUT FORMAT — follow it exactly
+============================================================
+Write NO comment, NO introduction, NO explanation, NO markdown.
+Output exactly these three blocks, separated by a line "-----":
+
+TITLE:
+<a short title, 2 to 5 words, taken from an image in the chorus>
+-----
+STYLE:
+<one single line: 8 to 15 tags in ENGLISH, comma separated>
+-----
+LYRICS:
+<the lyrics, with structure tags>
+-----
+ESTIMATED DURATION: <x min yy s> — <number> sung lines
+
+============================================================
+RULES FOR THE «LYRICS» BLOCK
+============================================================
+1. Structure tags in ENGLISH, each on its own line, in square brackets.
+   Allowed: [Intro] [Verse] [Pre-Chorus] [Chorus] [Interlude] [Bridge] [Outro]
+   [instrumental] [Solo]
+2. [Intro] and [Interlude] must stay EMPTY: the tag, then a blank line.
+   That is what triggers an instrumental passage.
+3. Every chorus must be copied WORD FOR WORD at each occurrence.
+4. Each chorus = 4 lines, immediately followed by an exact repeat of those same
+   4 lines (so 8 lines per [Chorus] block).
+5. One line = 6 to 10 syllables. All lines within a section have roughly the
+   same length.
+6. Regular rhymes: AABB or ABAB. The chorus must rhyme and work as a hook.
+7. [Outro] = 2 to 4 very short lines (1 to 4 words each), loose, fading out.
+8. FORBIDDEN in the lyrics: stage directions, playing instructions, parentheses,
+   asterisks, emojis, BPM numbers, instrument names, mixing notes, decorative
+   capitals, runs of exclamation marks, trademarks, real people's names, artist
+   names, lyrics of existing songs.
+9. Language of the lyrics: the language of the SUBJECT below. Tags always stay
+   in English.
+10. No line over 10 syllables. Avoid rare or technical words: prefer common words
+    and open vowels (the model sings more clearly on simple words).
+11. Minimal punctuation: no quotation marks, no semicolons. Commas and full stops
+    are fine.
+
+============================================================
+LENGTH — the model sings about 10 seconds per line
+============================================================
+Follow the duration requested at the end of this message.
+Absolute maximum: 6 minutes (the model stops there anyway). Minimum: 8 seconds.
+
+  short (~1 min 30):
+    [Intro] empty, [Verse] 4 lines, [Chorus] 4+4, [Outro] 2 lines
+
+  standard (~3 min):
+    [Intro] empty, [Verse] 4, [Pre-Chorus] 2, [Chorus] 4+4, [Interlude] empty,
+    [Verse] 4, [Chorus] 4+4, [Bridge] 4, [Chorus] 4+4, [Outro] 3
+
+  long (~4 min 30):
+    [Intro] empty, [Verse] 4, [Pre-Chorus] 2, [Chorus] 4+4, [Verse] 4,
+    [Pre-Chorus] 2, [Chorus] 4+4, [Interlude] empty, [Bridge] 4,
+    [Chorus] 4+4, [Chorus] 4+4, [Outro] 4
+
+============================================================
+RULES FOR THE «STYLE» BLOCK
+============================================================
+One single line, in English, 8 to 15 comma separated tags, in this order:
+  1. language + genre          (e.g. French pop, English indie folk)
+  2. sub-genre / era           (e.g. 80s, synthwave, neo-soul)
+  3. tempo / energy            (e.g. mid-tempo, upbeat, slow, driving)
+  4. 2 to 4 instruments        (e.g. warm analog synth, round bass, brushed drums)
+  5. mood / setting            (e.g. nostalgic night drive, rainy morning)
+  6. voice                     (e.g. breathy female vocal, warm male vocal, duet,
+                                   raspy vocal, clear lead vocal)
+  7. production colour         (e.g. polished demo mix, analog tape, wide reverb)
+
+Forbidden in STYLE: full sentences, parentheses, numeric BPM, references to
+existing artists, brand names, quotation marks.
+If the SUBJECT asks for an instrumental: write «instrumental, no vocals» in STYLE.
+
+============================================================
+SUBSTANCE — what makes a good song
+============================================================
+- Tell a precise, embodied story: sensory images (what you see, hear, touch),
+  concrete details rather than generalities.
+- The chorus must sum up the emotion in one strong, singable image.
+- Verses move the story forward; the bridge changes perspective or time.
+- Avoid tired clichés and forced rhymes that add nothing to the meaning.
+- Stay consistent with the requested STYLE: the vocabulary must match the
+  musical world.
+
+============================================================
+MY REQUEST
+============================================================
+DESIRED DURATION: {{DUREE}}
+STYLE: {{STYLE}}
+SUBJECT: {{SUJET}}
+
+Answer only with the requested blocks, nothing else.
+
+</script>
+
+<script src="/i18n.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

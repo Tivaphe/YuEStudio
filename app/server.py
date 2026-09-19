@@ -1,0 +1,1183 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+YueStudio - serveur local
+=========================
+
+Petit serveur web sans aucune dependance externe (uniquement la bibliotheque
+standard de Python) qui :
+
+  1. demarre le moteur audio.cpp (audiocpp_server.exe) avec le modele YuE2 ;
+  2. sert l'interface web (app/index.html) sur http://127.0.0.1:8090 ;
+  3. recoit les demandes de generation, les transmet au moteur, enregistre
+     l'audio WAV sur le disque (dossier "Mes chansons") et tient a jour
+     l'historique (historique.json).
+
+Tout est volontairement simple : un seul fichier, aucun framework.
+"""
+
+from __future__ import annotations
+
+import atexit
+import base64
+import json
+import os
+import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+import webbrowser
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Chemins
+# ---------------------------------------------------------------------------
+
+APP_DIR = Path(__file__).parent.absolute()  # ne resout pas les liens symboliques
+ROOT = APP_DIR.parent
+
+ENGINE_DIR = ROOT / "engine"
+MODELS_DIR = ROOT / "models" / "Yue2-3B-GGUF"
+SONGS_DIR = ROOT / "Mes chansons"
+HISTORY_FILE = ROOT / "historique.json"
+CONFIG_FILE = ROOT / "engine" / "server.json"
+ENGINE_LOG = ROOT / "engine" / "journal-moteur.log"
+BACKEND_FILE = ROOT / "engine" / "backend.txt"   # ecrit par installer.ps1
+PID_FILE = ROOT / "yuestudio.pid"
+
+HOST = "127.0.0.1"        # adresse d'ecoute de l'interface (modifiable via --host)
+HOST_DEFAULT = HOST
+APP_PORT_DEFAULT = 8090
+ENGINE_PORT_DEFAULT = 8080
+
+ENGINE_HOST = "127.0.0.1"
+
+# Qualites proposees : id -> (modele principal, VAE, taille approx. VRAM)
+QUALITIES = {
+    "q4": {
+        "label": "Rapide (Q4)",
+        "model_gguf": "yue2-3b-q4_0.gguf",
+        "vae_gguf": "yue2-vae-f16.gguf",
+        "vram": "~8 Go",
+    },
+    "q8": {
+        "label": "Equilibre (Q8) - recommande",
+        "model_gguf": "yue2-3b-q8_0.gguf",
+        "vae_gguf": "yue2-vae-f16.gguf",
+        "vram": "~9 Go",
+    },
+    "bf16": {
+        "label": "Maximale (BF16)",
+        "model_gguf": "yue2-3b-bf16.gguf",
+        "vae_gguf": "yue2-vae-f32.gguf",
+        "vram": "~13 Go",
+    },
+}
+DEFAULT_QUALITY = "q8"
+
+COT_LABELS = {
+    "full": "Complete (le modele compose la partition puis chante)",
+    "melody": "Melodie seule",
+    "off": "Desactivee (plus rapide)",
+}
+
+# ---------------------------------------------------------------------------
+# Petits utilitaires
+# ---------------------------------------------------------------------------
+
+HISTORY_LOCK = threading.Lock()
+JOBS_LOCK = threading.Lock()
+JOBS: dict = {}  # id -> {status, entry, error, started_at}
+
+
+def log(message: str) -> None:
+    try:
+        print(message, flush=True)
+    except Exception:
+        pass
+
+
+def now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def sanitize_title(title: str) -> str:
+    """Transforme un titre en nom de fichier sans risque."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", title or "").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"[. ]+$", "", cleaned)
+    return cleaned[:60] or "Sans titre"
+
+
+def load_history() -> list:
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        with HISTORY_LOCK:
+            data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except Exception as exc:  # fichier abime : on repart d'une liste vide
+        log(f"[!] historique.json illisible ({exc})")
+    return []
+
+
+def save_history(entries: list) -> None:
+    with HISTORY_LOCK:
+        tmp = HISTORY_FILE.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(tmp, HISTORY_FILE)
+
+
+def http_json(url: str, payload=None, timeout: float = 15.0):
+    """Petit client HTTP : renvoie (statut, corps JSON ou texte)."""
+    data = None
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            status = resp.status
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        status = exc.code
+    except Exception as exc:
+        return 0, {"error": {"message": str(exc)}}
+    try:
+        return status, json.loads(raw.decode("utf-8", "replace"))
+    except Exception:
+        return status, {"raw": raw.decode("utf-8", "replace")}
+
+
+def engine_ready(port: int) -> bool:
+    status, body = http_json(f"http://{ENGINE_HOST}:{port}/health", timeout=5)
+    return status == 200 and isinstance(body, dict) and body.get("status") == "ok"
+
+
+def engine_has_yue2(port: int) -> bool:
+    """Verifie qu'un moteur deja lance expose bien un modele YuE2."""
+    status, body = http_json(f"http://{ENGINE_HOST}:{port}/v1/models", timeout=5)
+    if status != 200 or not isinstance(body, dict):
+        return False
+    for entry in body.get("data") or []:
+        if isinstance(entry, dict) and entry.get("family") == "yue2":
+            return True
+    return False
+
+
+def port_is_free(port: int, host: str | None = None) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host or HOST, port))
+            return True
+        except OSError:
+            return False
+
+
+def find_engine_exe() -> Path | None:
+    for name in ("audiocpp_server.exe", "audiocpp_server"):
+        candidate = ENGINE_DIR / name
+        if candidate.exists():
+            return candidate
+    found = sorted(ENGINE_DIR.glob("**/audiocpp_server*")) if ENGINE_DIR.exists() else []
+    return found[0] if found else None
+
+
+def detect_backend() -> str:
+    """Backend choisi a l'installation (engine/backend.txt), sinon deduction.
+
+    Sous Windows, ggml est compile statiquement dans audiocpp_server.exe :
+    la presence de DLL ne suffit donc pas, d'ou le fichier backend.txt.
+    """
+    if BACKEND_FILE.exists():
+        value = BACKEND_FILE.read_text(encoding="utf-8", errors="replace").strip().lower()
+        value = value.replace("cuda12.4", "cuda").replace("cuda13.3", "cuda")
+        if value in ("cuda", "vulkan", "cpu", "metal"):
+            return value
+
+    if not ENGINE_DIR.exists():
+        return "cpu"
+    names = {p.name.lower() for p in ENGINE_DIR.rglob("*.dll")}
+    # Le paquet CUDA est livre avec les DLL d'execution CUDA (cudart, cublas...).
+    if any(n.startswith(("cudart", "cublas", "ggml-cuda")) for n in names):
+        return "cuda"
+    if any(n.startswith("ggml-vulkan") for n in names):
+        return "vulkan"
+    # Paquet Windows Vulkan / CPU : ggml est statique, on suppose Vulkan
+    # (le moteur retombe sur le CPU tout seul s'il ne trouve pas de GPU).
+    if (ENGINE_DIR / "audiocpp_server.exe").exists():
+        return "vulkan"
+    return "cpu"
+
+
+def write_engine_config(engine_port: int, backend: str) -> None:
+    """Ecrit engine/server.json : un modele par qualite, charge a la demande."""
+    model_path = str(MODELS_DIR)
+    models = []
+    for qid, spec in QUALITIES.items():
+        models.append(
+            {
+                "id": f"yue2-{qid}",
+                "family": "yue2",
+                "path": model_path,
+                "task": "gen",
+                "mode": "offline",
+                "busy_timeout_ms": 3600000,
+                "session_options": {
+                    "yue2.model_gguf": spec["model_gguf"],
+                    "yue2.vae_gguf": spec["vae_gguf"],
+                },
+            }
+        )
+    config = {
+        "host": ENGINE_HOST,
+        "port": engine_port,
+        "backend": backend,
+        "device": 0,
+        "threads": 4,
+        "lazy_load": True,
+        "max_loaded_models": 1,
+        "idle_unload_ms": 1800000,
+        "busy_timeout_ms": 3600000,
+        "min_free_memory_mb": 0,
+        "log_request_body": False,
+        "models": models,
+    }
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Etat partage (moteur)
+# ---------------------------------------------------------------------------
+
+
+class Engine:
+    def __init__(self) -> None:
+        self.proc: subprocess.Popen | None = None
+        self.port: int = ENGINE_PORT_DEFAULT
+        self.backend: str = "cpu"
+        self.exe: Path | None = None
+        self.reused: bool = False
+        self.log_handle = None
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{ENGINE_HOST}:{self.port}"
+
+    def start(self) -> None:
+        self.exe = find_engine_exe()
+        if self.exe is None:
+            log("")
+            log("[!] audiocpp_server introuvable dans le dossier 'engine'.")
+            log("    Lancez d'abord :  1-INSTALLER.bat")
+            log("    L'interface demarre quand meme en mode 'hors ligne'.")
+            return
+
+        self.backend = detect_backend()
+
+        # Un moteur YuE2 tourne deja ? On le reutilise (sinon on prend un autre port).
+        for port in (ENGINE_PORT_DEFAULT, ENGINE_PORT_DEFAULT + 10):
+            if engine_ready(port) and engine_has_yue2(port):
+                self.port = port
+                self.reused = True
+                log(f"[i] Moteur audio.cpp deja actif sur le port {port} : je le reutilise.")
+                return
+
+        self.port = ENGINE_PORT_DEFAULT
+        if not port_is_free(self.port):
+            self.port = next(
+                (p for p in range(8081, 8120) if port_is_free(p)), ENGINE_PORT_DEFAULT
+            )
+            log(f"[i] Le port 8080 est occupe : le moteur demarre sur le port {self.port}.")
+
+        write_engine_config(self.port, self.backend)
+
+        ENGINE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        self.log_handle = open(ENGINE_LOG, "a", encoding="utf-8", errors="replace")
+        self.log_handle.write(f"\n=== Demarrage {now_iso()} backend={self.backend} port={self.port} ===\n")
+        self.log_handle.flush()
+
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        self.proc = subprocess.Popen(
+            [str(self.exe), "--config", str(CONFIG_FILE)],
+            cwd=str(ENGINE_DIR),
+            stdout=self.log_handle,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
+        log(f"[i] Moteur audio.cpp lance (backend {self.backend}, port {self.port}).")
+
+        # Attente de la disponibilite (le chargement du modele se fait a la 1re demande)
+        for _ in range(60):
+            if engine_ready(self.port):
+                log("[i] Moteur pret.")
+                return
+            if self.proc.poll() is not None:
+                log("[!] Le moteur s'est arrete immediatement. Voir engine/journal-moteur.log")
+                return
+            time.sleep(0.5)
+        log("[!] Le moteur ne repond pas encore ; l'interface reessaiera plus tard.")
+
+    def stop(self) -> None:
+        if self.proc and self.proc.poll() is None:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=10)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+        if self.log_handle:
+            try:
+                self.log_handle.close()
+            except Exception:
+                pass
+            self.log_handle = None
+
+
+ENGINE = Engine()
+
+
+# ---------------------------------------------------------------------------
+# Generation
+# ---------------------------------------------------------------------------
+
+
+def open_in_file_manager(path: Path) -> bool:
+    """Ouvre un dossier dans l'explorateur (Windows) / le gestionnaire de fichiers."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+            return True
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+            return True
+        subprocess.Popen(["xdg-open", str(path)])
+        return True
+    except Exception as exc:
+        log(f"[!] ouverture du dossier impossible : {exc}")
+        return False
+
+
+def quality_files_missing(quality: str) -> list:
+    spec = QUALITIES[quality]
+    missing = []
+    for name in (spec["model_gguf"], spec["vae_gguf"]):
+        if not (MODELS_DIR / name).exists():
+            missing.append(name)
+    for name in (
+        "sidecars/yue2-model-config.json",
+        "sidecars/yue2-generation-config.json",
+        "sidecars/yue2-qwen.tiktoken",
+        "sidecars/yue2-vae-config.json",
+    ):
+        if not (MODELS_DIR / name).exists():
+            missing.append(name)
+    return missing
+
+
+def extract_score(result: dict) -> str:
+    """Recupere la partition ABC produite par le modele, si presente."""
+    for artifact in result.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        blob = " ".join(
+            str(artifact.get(key, "")) for key in ("id", "kind")
+        ) + " " + json.dumps(artifact.get("meta") or {}, ensure_ascii=False)
+        if re.search(r"abc|score", blob, re.I):
+            payload = artifact.get("payload")
+            if isinstance(payload, str) and payload:
+                try:
+                    return base64.b64decode(payload).decode("utf-8", "replace")
+                except Exception:
+                    return ""
+    return ""
+
+
+def validate_generation(body: dict):
+    """Verifications immediates : renvoie (statut, message) ou (None, None)."""
+    if not (body.get("style") or "").strip():
+        return 400, "Le champ « Style » est obligatoire."
+    if not (body.get("lyrics") or "").strip():
+        return 400, "Le champ « Paroles » est obligatoire."
+
+    quality = body.get("quality") or DEFAULT_QUALITY
+    if quality not in QUALITIES:
+        return 400, f"Qualite inconnue : {quality}"
+
+    if ENGINE.exe is None:
+        return 503, "Le moteur audio.cpp n'est pas installe. Lancez 1-INSTALLER.bat."
+    if not engine_ready(ENGINE.port):
+        return 503, ("Le moteur ne repond pas. Relancez 2-LANCER.bat ou consultez "
+                     "engine/journal-moteur.log.")
+
+    missing = quality_files_missing(quality)
+    if missing:
+        return 400, ("Fichiers modele manquants pour la qualite « " + quality + " » : "
+                     + ", ".join(missing)
+                     + ". Relancez 1-INSTALLER.bat (option -ToutesQualites) ou "
+                       "choisissez une autre qualite.")
+    return None, None
+
+
+def run_generation(body: dict):
+    title = (body.get("title") or "").strip()
+    style = (body.get("style") or "").strip()
+    lyrics = (body.get("lyrics") or "").strip()
+    quality = body.get("quality") or DEFAULT_QUALITY
+    cot = body.get("cot") or "full"
+    steps = int(body.get("steps") or 8)
+    guidance = float(body.get("guidance") or 0)
+    seed = body.get("seed")
+
+    def as_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    max_duration_min = as_float(body.get("max_duration_min"), 0.0)
+    semantic_temperature = as_float(body.get("semantic_temperature"), 0.0)
+    semantic_max_tokens = 0
+    if max_duration_min > 0:
+        # 25 codes musicaux par seconde (trame de 40 ms), plafond modele : 9000
+        semantic_max_tokens = int(max(250, min(9000, max_duration_min * 60 * 25)))
+
+    if quality not in QUALITIES:
+        return 400, {"error": {"message": f"Qualite inconnue : {quality}"}}
+    if not style:
+        return 400, {"error": {"message": "Le style est obligatoire."}}
+    if not lyrics:
+        return 400, {"error": {"message": "Les paroles sont obligatoires."}}
+    if cot not in COT_LABELS:
+        cot = "full"
+    abc_text = (body.get("abc") or "").strip()
+    if len(abc_text) > 200000:
+        return 400, {
+            "error": {"message": "Partition ABC trop longue (200 000 caracteres max)."}
+        }
+    if abc_text and cot == "off":
+        cot = "melody"  # une partition fournie impose une route symbolique
+    steps = max(1, min(64, steps))
+
+    missing = quality_files_missing(quality)
+    if missing:
+        return 400, {
+            "error": {
+                "message": (
+                    "Fichiers modele manquants pour cette qualite : "
+                    + ", ".join(missing)
+                    + ". Relancez 1-INSTALLER.bat (option -ToutesQualites) "
+                    "ou choisissez une autre qualite."
+                )
+            }
+        }
+
+    if ENGINE.exe is None:
+        return 503, {
+            "error": {
+                "message": "Le moteur audio.cpp n'est pas installe. Lancez 1-INSTALLER.bat."
+            }
+        }
+    if not engine_ready(ENGINE.port):
+        return 503, {
+            "error": {
+                "message": "Le moteur ne repond pas. Relancez 2-LANCER.bat "
+                "ou consultez engine/journal-moteur.log."
+            }
+        }
+
+    if seed in (None, "", "random"):
+        seed = int(time.time() * 1000) % (2**31)
+    else:
+        try:
+            seed = max(0, min(2**62, int(seed)))
+        except Exception:
+            seed = 1234
+
+    options = {
+        "style": style,
+        "lyrics": lyrics,
+        "cot": cot,
+        "seed": seed,
+        "num_inference_steps": steps,
+    }
+    if guidance > 0:
+        options["guidance_scale"] = guidance
+    if semantic_max_tokens:
+        options["semantic_max_tokens"] = semantic_max_tokens
+        options["semantic_min_tokens"] = min(200, semantic_max_tokens)
+    if semantic_temperature > 0:
+        options["semantic_temperature"] = max(0.0, min(5.0, semantic_temperature))
+    if abc_text:
+        options["abc"] = abc_text
+
+    started = time.time()
+    status, result = http_json(
+        f"{ENGINE.base_url}/v1/tasks/run",
+        {"model": f"yue2-{quality}", "request": {"text": lyrics, "options": options}},
+        timeout=3600.0,
+    )
+    elapsed = time.time() - started
+
+    if status != 200 or "audio" not in result:
+        message = "Generation echouee."
+        if isinstance(result, dict):
+            err = result.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                message = err["message"]
+            elif result.get("raw"):
+                message = result["raw"][:600]
+        return status or 502, {
+            "error": {"message": message, "detail": result if isinstance(result, dict) else None}
+        }
+
+    try:
+        wav_bytes = base64.b64decode(result["audio"])
+    except Exception as exc:
+        return 502, {"error": {"message": f"Audio illisible : {exc}"}}
+    if not wav_bytes:
+        return 502, {"error": {"message": "Le moteur n'a renvoye aucun audio."}}
+
+    SONGS_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    filename = f"{stamp}_{sanitize_title(title)}.wav"
+    target = SONGS_DIR / filename
+    counter = 1
+    while target.exists():
+        target = SONGS_DIR / f"{stamp}_{sanitize_title(title)}_{counter}.wav"
+        counter += 1
+    target.write_bytes(wav_bytes)
+
+    resynth_of = body.get("resynth_of")
+    if isinstance(resynth_of, dict):
+        resynth_of = {
+            "id": str(resynth_of.get("id") or "")[:40],
+            "title": str(resynth_of.get("title") or "")[:120],
+        }
+    else:
+        resynth_of = None
+
+    timing = result.get("timing") or {}
+    entry = {
+        "id": uuid.uuid4().hex[:12],
+        "created_at": now_iso(),
+        "title": title or "Sans titre",
+        "style": style,
+        "lyrics": lyrics,
+        "cot": cot,
+        "quality": quality,
+        "seed": seed,
+        "steps": steps,
+        "guidance": guidance or None,
+        "semantic_temperature": semantic_temperature or None,
+        "max_duration_min": max_duration_min or None,
+        "semantic_max_tokens": semantic_max_tokens or None,
+        "audio_file": target.name,
+        "audio_bytes": len(wav_bytes),
+        "duration_ms": timing.get("audio_duration_ms"),
+        "sample_rate": result.get("sample_rate"),
+        "channels": result.get("channels"),
+        "gen_seconds": round(elapsed, 1),
+        "rtf": timing.get("rtf"),
+        "score_abc": extract_score(result) or None,
+        "abc_external": bool(abc_text),
+        "resynth_of": resynth_of,
+        "note": "",
+        "favori": False,
+    }
+
+    entries = load_history()
+    entries.insert(0, entry)
+    save_history(entries)
+
+    log(
+        f"[+] Genere : {entry['title']} "
+        f"({(entry['duration_ms'] or 0) / 1000:.0f} s de musique en {entry['gen_seconds']} s)"
+    )
+    return 200, {"entry": entry, "audio_url": f"/audio/{urllib.parse.quote(target.name)}"}
+
+
+# ---------------------------------------------------------------------------
+# Serveur HTTP
+# ---------------------------------------------------------------------------
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "YueStudio/1.0"
+    protocol_version = "HTTP/1.1"
+
+    # --- helpers -----------------------------------------------------------
+    def _send(self, status: int, body: bytes, ctype: str, extra=None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except Exception:
+            pass
+
+    def _json(self, status: int, obj) -> None:
+        self._send(
+            status,
+            json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+            "application/json; charset=utf-8",
+        )
+
+    def _read_body(self) -> dict:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def log_message(self, fmt, *args) -> None:  # silence le journal HTTP
+        pass
+
+    # --- routes ------------------------------------------------------------
+    def do_GET(self):  # noqa: N802
+        path = self.path.split("?", 1)[0]
+
+        if path in ("/", "/index.html"):
+            self._serve_file(APP_DIR / "index.html", "text/html; charset=utf-8")
+        elif path == "/app.js":
+            self._serve_file(APP_DIR / "app.js", "application/javascript; charset=utf-8")
+        elif path == "/i18n.js":
+            self._serve_file(APP_DIR / "i18n.js", "application/javascript; charset=utf-8")
+        elif path == "/style.css":
+            self._serve_file(APP_DIR / "style.css", "text/css; charset=utf-8")
+        elif path == "/favicon.svg":
+            self._serve_file(APP_DIR / "favicon.svg", "image/svg+xml")
+        elif path == "/api/state":
+            self._state()
+        elif path == "/api/history":
+            self._json(200, {"entries": load_history()})
+        elif path == "/api/export":
+            payload = json.dumps(
+                {"export": "YueStudio", "version": 1, "entries": load_history()},
+                ensure_ascii=False,
+                indent=2,
+            ).encode("utf-8")
+            self._send(
+                200,
+                payload,
+                "application/json; charset=utf-8",
+                {
+                    "Content-Disposition": 'attachment; filename="historique-yuestudio.json"'
+                },
+            )
+        elif path == "/api/pending":
+            with JOBS_LOCK:
+                jobs = [
+                    {"job_id": jid, **{k: v for k, v in job.items() if k != "entry"}}
+                    for jid, job in JOBS.items()
+                ]
+            self._json(200, {"jobs": jobs})
+        elif path.startswith("/api/pending/"):
+            job_id = path[len("/api/pending/") :]
+            with JOBS_LOCK:
+                job = dict(JOBS.get(job_id) or {})
+            if not job:
+                self._json(404, {"error": {"message": "Travail inconnu ou termine."}})
+                return
+            payload = {"job_id": job_id, "status": job.get("status")}
+            if job.get("entry"):
+                name = job["entry"].get("audio_file") or ""
+                payload["entry"] = job["entry"]
+                payload["audio_url"] = f"/audio/{urllib.parse.quote(name)}"
+            if job.get("error"):
+                payload["error"] = job["error"]
+            self._json(200, payload)
+        elif path.startswith("/audio/"):
+            self._audio(path[len("/audio/") :])
+        else:
+            self._json(404, {"error": {"message": f"Route inconnue : {path}"}})
+
+    def do_POST(self):  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        body = self._read_body()
+
+        if path == "/api/generate":
+            err_status, err_message = validate_generation(body)
+            if err_status:
+                log(f"[!] Demande refusee : {err_message}")
+                self._json(err_status, {"error": {"message": err_message}})
+                return
+
+            job_id = uuid.uuid4().hex[:10]
+            with JOBS_LOCK:
+                JOBS[job_id] = {"status": "running", "started_at": now_iso()}
+                # on ne garde que les 8 derniers travaux
+                for old in sorted(
+                    JOBS.items(), key=lambda kv: kv[1].get("started_at") or ""
+                )[:-8]:
+                    JOBS.pop(old[0], None)
+
+            def worker(jid: str, payload: dict) -> None:
+                try:
+                    status, result = run_generation(payload)
+                except Exception as exc:
+                    status, result = 500, {"error": {"message": f"Erreur interne : {exc}"}}
+                with JOBS_LOCK:
+                    job = JOBS.setdefault(jid, {})
+                    job["status"] = "done" if status == 200 else "error"
+                    job["http_status"] = status
+                    if status == 200:
+                        job["entry"] = result.get("entry")
+                        job["audio_url"] = result.get("audio_url")
+                    else:
+                        job["error"] = (result or {}).get("error") or {"message": "Erreur"}
+                if status != 200:
+                    log(f"[!] Echec : {job.get('error', {}).get('message')}")
+
+            threading.Thread(target=worker, args=(job_id, body), daemon=True).start()
+            self._json(202, {"job_id": job_id, "status": "running"})
+        elif path == "/api/update":
+            self._update(body)
+        elif path == "/api/import":
+            self._import(body)
+        elif path == "/api/open-songs":
+            ok = open_in_file_manager(SONGS_DIR)
+            self._json(200, {"ok": ok, "path": str(SONGS_DIR)})
+        elif path == "/api/open-root":
+            ok = open_in_file_manager(ROOT)
+            self._json(200, {"ok": ok, "path": str(ROOT)})
+        elif path == "/api/unload":
+            ok = unload_engine_model(timeout=60)
+            self._json(
+                200,
+                {
+                    "ok": ok,
+                    "message": "Modele decharge : la VRAM est liberee."
+                    if ok
+                    else "Le moteur n'a pas repondu.",
+                },
+            )
+        elif path == "/api/bye":
+            # Beacon envoye quand l'onglet du navigateur est ferme : on libere la
+            # VRAM sans couper le moteur (il rechargera le modele a la demande).
+            ok = unload_engine_model(timeout=5)
+            self._json(200, {"ok": ok})
+        else:
+            self._json(404, {"error": {"message": f"Route inconnue : {path}"}})
+
+    def do_DELETE(self):  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/history/"):
+            entry_id = path[len("/api/history/") :]
+            entries = load_history()
+            kept, removed = [], None
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    removed = entry
+                else:
+                    kept.append(entry)
+            if removed is None:
+                self._json(404, {"error": {"message": "Entree introuvable."}})
+                return
+            save_history(kept)
+            name = removed.get("audio_file")
+            if name:
+                try:
+                    (SONGS_DIR / Path(name).name).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            self._json(200, {"ok": True, "id": entry_id})
+        else:
+            self._json(404, {"error": {"message": f"Route inconnue : {path}"}})
+
+    # --- implementations ---------------------------------------------------
+    def _serve_file(self, file_path: Path, ctype: str) -> None:
+        if not file_path.exists():
+            self._json(404, {"error": {"message": f"Fichier absent : {file_path.name}"}})
+            return
+        self._send(200, file_path.read_bytes(), ctype)
+
+    def _audio(self, name: str) -> None:
+        name = urllib.parse.unquote(name)
+        safe = Path(name).name  # empeche toute sortie du dossier
+        file_path = SONGS_DIR / safe
+        if not safe or not file_path.exists() or not file_path.is_file():
+            self._json(404, {"error": {"message": "Fichier audio introuvable."}})
+            return
+        data = file_path.read_bytes()
+        extra = {
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'inline; filename="{safe.encode("ascii", "ignore").decode() or "song.wav"}"',
+        }
+        rng = self.headers.get("Range")
+        if rng:
+            match = re.match(r"bytes=(\d*)-(\d*)", rng)
+            if match:
+                start = int(match.group(1) or 0)
+                end = int(match.group(2) or (len(data) - 1))
+                end = min(end, len(data) - 1)
+                if start <= end:
+                    chunk = data[start : end + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Type", "audio/wav")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.end_headers()
+                    try:
+                        self.wfile.write(chunk)
+                    except Exception:
+                        pass
+                    return
+        self._send(200, data, "audio/wav", extra)
+
+    def _state(self) -> None:
+        ready = ENGINE.exe is not None and engine_ready(ENGINE.port)
+        health = {}
+        if ready:
+            _, health = http_json(f"{ENGINE.base_url}/health", timeout=5)
+
+        installed = {}
+        for qid, spec in QUALITIES.items():
+            installed[qid] = (MODELS_DIR / spec["model_gguf"]).exists() and (
+                MODELS_DIR / spec["vae_gguf"]
+            ).exists()
+
+        sidecars_ok = all(
+            (MODELS_DIR / name).exists()
+            for name in (
+                "sidecars/yue2-model-config.json",
+                "sidecars/yue2-generation-config.json",
+                "sidecars/yue2-qwen.tiktoken",
+                "sidecars/yue2-vae-config.json",
+            )
+        )
+
+        self._json(
+            200,
+            {
+                "engine": {
+                    "installed": ENGINE.exe is not None,
+                    "ready": ready,
+                    "backend": health.get("backend") or ENGINE.backend,
+                    "port": ENGINE.port,
+                    "reused": ENGINE.reused,
+                },
+                "models": {
+                    "dir": str(MODELS_DIR),
+                    "sidecars_ok": sidecars_ok,
+                    "qualities": {
+                        qid: {**spec, "installed": installed[qid]}
+                        for qid, spec in QUALITIES.items()
+                    },
+                    "default_quality": DEFAULT_QUALITY,
+                },
+                "songs_dir": str(SONGS_DIR),
+                "cot_labels": COT_LABELS,
+                "counts": {"history": len(load_history())},
+            },
+        )
+
+    def _update(self, body: dict) -> None:
+        entry_id = body.get("id")
+        changes = body.get("changes") or {}
+        allowed = {"title", "note", "favori"}
+        entries = load_history()
+        found = False
+        for entry in entries:
+            if entry.get("id") == entry_id:
+                for key, value in changes.items():
+                    if key in allowed:
+                        entry[key] = value
+                found = True
+                break
+        if not found:
+            self._json(404, {"error": {"message": "Entree introuvable."}})
+            return
+        save_history(entries)
+        self._json(200, {"ok": True})
+
+    def _import(self, body: dict) -> None:
+        incoming = body.get("entries")
+        if not isinstance(incoming, list):
+            self._json(400, {"error": {"message": "Format d'import invalide."}})
+            return
+        entries = load_history()
+        known = {e.get("id") for e in entries}
+        added = 0
+        for item in incoming:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if item["id"] in known:
+                continue
+            entries.append(item)
+            known.add(item["id"])
+            added += 1
+        entries.sort(key=lambda e: e.get("created_at") or "", reverse=True)
+        save_history(entries)
+        self._json(200, {"ok": True, "added": added})
+
+
+# ---------------------------------------------------------------------------
+# Arret propre : decharger le modele, couper le moteur, tout nettoyer
+# ---------------------------------------------------------------------------
+#
+# Le moteur audio.cpp tourne en sous-processus cache de ce script : il n'a pas
+# sa propre fenetre. Fermer la fenetre de YueStudio doit donc tout arreter.
+#
+# Trois evenements declenchent la meme procedure :
+#   - Ctrl+C                          (KeyboardInterrupt)
+#   - fermeture de la fenetre Windows (CTRL_CLOSE_EVENT, via kernel32)
+#   - arret / fermeture de session Windows, ou signal SIGTERM
+#
+# Ordre des operations : dechargement du modele (la VRAM est liberee proprement)
+# puis arret du processus moteur, puis suppression du fichier yuestudio.pid.
+
+_SHUTDOWN_DONE = threading.Event()
+
+
+def unload_engine_model(timeout: float = 8.0) -> bool:
+    """Demande au moteur de liberer la VRAM. Renvoie True si c'est confirme."""
+    try:
+        status, _ = http_json(
+            f"{ENGINE.base_url}/v1/tasks/unload_all_models", {}, timeout=timeout
+        )
+        return status == 200
+    except Exception:
+        return False
+
+
+def cleanup() -> None:
+    """Arret complet, idempotent : utilisable depuis plusieurs gestionnaires."""
+    if _SHUTDOWN_DONE.is_set():
+        return
+    _SHUTDOWN_DONE.set()
+    try:
+        log("[i] Dechargement du modele (liberation de la VRAM)...")
+        if unload_engine_model():
+            log("[OK] Modele decharge : la VRAM est liberee.")
+        else:
+            log("[i] Le moteur n'a pas repondu : la VRAM sera liberee a sa fermeture.")
+    except Exception:
+        pass
+    try:
+        ENGINE.stop()
+    except Exception:
+        pass
+    try:
+        PID_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+HTTPD = None            # serveur HTTP actif (pose dans main())
+_SHUTDOWN_STARTED = threading.Event()
+
+
+def request_shutdown(reason: str, hard_exit: bool = False) -> None:
+    """Declenche l'arret complet depuis n'importe quel fil ou gestionnaire.
+
+    Le travail est fait dans un fil dedie : un gestionnaire de signal s'execute
+    dans le fil principal, qui est justement celui qui doit sortir de
+    serve_forever() - appeler httpd.shutdown() directement y provoquerait un
+    blocage. Idempotent : un seul arret reel, meme si plusieurs evenements
+    arrivent en meme temps (fenetre fermee + fin de session, par exemple).
+    """
+    if _SHUTDOWN_STARTED.is_set():
+        return
+    _SHUTDOWN_STARTED.set()
+
+    def _run() -> None:
+        try:
+            log("")
+            log(f"[i] {reason}")
+            cleanup()
+            try:
+                if HTTPD is not None:
+                    HTTPD.shutdown()
+            except Exception:
+                pass
+            if hard_exit:
+                # Fermeture de la fenetre Windows : le systeme tue les processus
+                # de la console apres ~5 s, on sort donc sans attendre.
+                try:
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+                os._exit(0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, name="arret", daemon=True).start()
+
+
+def _install_shutdown_handlers() -> None:
+    """Branche Ctrl+C, fermeture de fenetre, fin de session et SIGTERM."""
+    atexit.register(cleanup)
+
+    def _on_signal(signum, _frame):  # noqa: ANN001
+        noms = {1: "terminal ferme", 2: "Ctrl+C", 3: "Ctrl+Pause", 15: "signal d'arret"}
+        nom = noms.get(signum, f"signal {signum}")
+        request_shutdown(f"{nom} recu : arret de YueStudio...")
+
+    signaux = [signal.SIGINT, signal.SIGTERM]
+    for nom in ("SIGBREAK", "SIGHUP"):        # Ctrl+Pause (Windows), terminal ferme
+        sig = getattr(signal, nom, None)
+        if sig is not None:
+            signaux.append(sig)
+    for sig in signaux:
+        if sig is not None:
+            try:
+                signal.signal(sig, _on_signal)
+            except Exception:
+                pass
+
+    if os.name != "nt":
+        return
+
+    # Windows envoie CTRL_CLOSE_EVENT a tous les processus de la console quand
+    # l'utilisateur clique sur la croix, puis laisse ~5 secondes avant de tuer.
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        HANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+        CTRL_C_EVENT = 0
+        CTRL_BREAK_EVENT = 1
+        CTRL_CLOSE_EVENT = 2
+        CTRL_LOGOFF_EVENT = 5
+        CTRL_SHUTDOWN_EVENT = 6
+
+        def _console_handler(event):  # noqa: ANN001
+            if event in (CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT):
+                # Fenetre fermee, session fermee ou PC qui s'eteint.
+                request_shutdown("Fenetre fermee : arret de YueStudio...", hard_exit=True)
+                return True     # on a traite l'evenement
+            if event in (CTRL_C_EVENT, CTRL_BREAK_EVENT):
+                return False    # laisse Python lever KeyboardInterrupt
+            return False
+
+        # Reference conservee : sinon le rappel est libere par le ramasse-miettes.
+        _install_shutdown_handlers._keepalive = HANDLER_ROUTINE(_console_handler)
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(
+            _install_shutdown_handlers._keepalive, True
+        )
+    except Exception as exc:  # jamais bloquant
+        log(f"[i] Gestion de la fermeture de fenetre indisponible : {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Demarrage
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    import argparse
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+    parser = argparse.ArgumentParser(description="YueStudio - serveur local")
+    parser.add_argument("--port", type=int, default=APP_PORT_DEFAULT)
+    parser.add_argument("--host", default=HOST_DEFAULT,
+                        help="adresse d'ecoute de l'interface (127.0.0.1 par defaut)")
+    parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--no-engine", action="store_true")
+    args = parser.parse_args()
+
+    SONGS_DIR.mkdir(parents=True, exist_ok=True)
+    if not HISTORY_FILE.exists():
+        save_history([])
+    try:
+        PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+    except Exception:
+        pass
+
+    log("=" * 62)
+    log("  YueStudio - creation de musique locale avec YuE2-3B")
+    log("=" * 62)
+
+    _install_shutdown_handlers()
+
+    if not args.no_engine:
+        ENGINE.start()
+    else:
+        log("[i] Mode --no-engine : moteur non demarre.")
+
+    global HOST
+    HOST = args.host
+    port = args.port
+    if not port_is_free(port):
+        port = next((p for p in range(port + 1, port + 40) if port_is_free(p)), port)
+
+    url = f"http://{HOST}:{port}/"
+    global HTTPD
+    try:
+        httpd = ThreadingHTTPServer((HOST, port), Handler)
+        HTTPD = httpd
+    except OSError as exc:
+        log(f"[!] Impossible d'ecouter sur le port {port} : {exc}")
+        return 1
+
+    log("")
+    log(f"  Interface : {url}")
+    log(f"  Chansons  : {SONGS_DIR}")
+    log(f"  Historique: {HISTORY_FILE}")
+    log("")
+    log("  Laissez cette fenetre ouverte pendant que vous creez.")
+    log("  Pour tout arreter : FERMEZ CETTE FENETRE (ou Ctrl+C).")
+    log("  Le modele est alors decharge et le moteur coupe automatiquement.")
+    log("")
+
+    if not args.no_browser:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        log("\n[i] Ctrl+C : arret demande...")
+    finally:
+        try:
+            httpd.shutdown()
+        except Exception:
+            pass
+        cleanup()
+        log("[i] Au revoir.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,9 @@
+Déposez ici le fichier WAV d'exemple référencé par les README :
+
+    2026-09-19_135052_cyber.wav
+
+(morceau « cyber », instrumental synthwave généré en local par YueStudio).
+Une fois le fichier copié, le lien « Écouter un exemple » des README fonctionne.
+
+Place here the example WAV file referenced by the readmes:
+2026-09-19_135052_cyber.wav ("cyber", a synthwave instrumental generated locally by YueStudio).

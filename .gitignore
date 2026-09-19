@@ -1,0 +1,21 @@
+# Créés à l'installation ou à l'exécution — ne jamais versionner
+engine/
+models/
+Mes chansons/
+historique.json
+yuestudio.pid
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Windows / éditeurs
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.partial
+
+# Sauvegardes de l'installeur
+*.bak
