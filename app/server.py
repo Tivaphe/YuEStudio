@@ -98,6 +98,20 @@ HISTORY_LOCK = threading.Lock()
 JOBS_LOCK = threading.Lock()
 JOBS: dict = {}  # id -> {status, entry, error, started_at}
 
+# --- Garde-fous des requetes POST ------------------------------------------
+# 1) Content-Type : un site tiers ne peut PAS envoyer application/json sans
+#    preflight CORS ; en mode « no-cors » le navigateur n'autorise que
+#    text/plain, application/x-www-form-urlencoded ou multipart/form-data.
+# 2) Host : bloque le DNS rebinding (un domaine pirate qui resout vers
+#    127.0.0.1 se presente avec son propre nom dans l'en-tete Host).
+# 3) Origin / Sec-Fetch-Site : refusent explicitement l'origine croisee.
+ALLOWED_POST_TYPE = "application/json"
+UNLOAD_GRACE = 5.0          # secondes : un F5 (ou un retour) annule le dechargement
+_LOCAL_NAMES: set = set()   # noms d'hote autorises, calcules selon --host
+_LAST_ACTIVITY = 0.0        # horodatage de la derniere requete de l'interface
+_UNLOAD_TIMER = None
+_UNLOAD_LOCK = threading.Lock()
+
 
 def log(message: str) -> None:
     try:
@@ -669,9 +683,63 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args) -> None:  # silence le journal HTTP
         pass
 
+    # --- anti-CSRF ---------------------------------------------------------
+    def _host_name(self) -> str:
+        """Nom d'hote de l'en-tete Host, sans le port."""
+        raw = (self.headers.get("Host") or "").strip()
+        if not raw:
+            return ""
+        try:
+            return (urllib.parse.urlsplit("//" + raw).hostname or "").lower()
+        except ValueError:
+            return ""
+
+    @staticmethod
+    def _origin_name(value: str) -> str:
+        try:
+            return (urllib.parse.urlsplit(value).hostname or "").lower()
+        except ValueError:
+            return ""
+
+    def _post_allowed(self) -> tuple:
+        """Un POST doit venir de l'interface locale elle-meme.
+
+        Trois barrieres, dans l'ordre ou elles se declenchent :
+          - Sec-Fetch-Site / Origin : refus explicite d'une page tierce ;
+          - Host : refus du DNS rebinding ;
+          - Content-Type: application/json : un site tiers ne peut pas l'envoyer
+            sans preflight CORS (en mode « no-cors » le navigateur n'accepte que
+            text/plain, x-www-form-urlencoded ou multipart/form-data).
+        """
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if site == "cross-site":
+            return False, "Requete refusee : origine croisee (Sec-Fetch-Site)."
+
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin:
+            if origin.lower() == "null":
+                return False, "Requete refusee : origine opaque."
+            o_name = self._origin_name(origin)
+            if _LOCAL_NAMES:
+                if o_name not in _LOCAL_NAMES:
+                    return False, "Requete refusee : origine non locale."
+            elif o_name != self._host_name():
+                return False, "Requete refusee : origine differente de l'hote."
+
+        if _LOCAL_NAMES:
+            host = self._host_name()
+            if host and host not in _LOCAL_NAMES:
+                return False, "Requete refusee : en-tete Host inattendu."
+
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if ctype != ALLOWED_POST_TYPE:
+            return False, "Requete refusee : Content-Type « application/json » attendu."
+        return True, ""
+
     # --- routes ------------------------------------------------------------
     def do_GET(self):  # noqa: N802
         path = self.path.split("?", 1)[0]
+        touch_activity()
 
         if path in ("/", "/index.html"):
             self._serve_file(APP_DIR / "index.html", "text/html; charset=utf-8")
@@ -730,6 +798,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if path != "/api/bye":
+            touch_activity()          # le beacon de fermeture ne repousse pas le timer
+        allowed, reason = self._post_allowed()
+        if not allowed:
+            log(f"[!] {reason} (POST {path})")
+            self._json(403, {"error": {"message": reason}})
+            return
         body = self._read_body()
 
         if path == "/api/generate":
@@ -778,6 +853,16 @@ class Handler(BaseHTTPRequestHandler):
             ok = open_in_file_manager(ROOT)
             self._json(200, {"ok": ok, "path": str(ROOT)})
         elif path == "/api/unload":
+            if has_running_job():
+                self._json(
+                    409,
+                    {
+                        "ok": False,
+                        "message": "Une generation est en cours : attendez la fin "
+                        "avant de decharger le modele.",
+                    },
+                )
+                return
             ok = unload_engine_model(timeout=60)
             self._json(
                 200,
@@ -791,8 +876,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/bye":
             # Beacon envoye quand l'onglet du navigateur est ferme : on libere la
             # VRAM sans couper le moteur (il rechargera le modele a la demande).
-            ok = unload_engine_model(timeout=5)
-            self._json(200, {"ok": ok})
+            # Deux garde-fous : rien n'est fait pendant une generation, et le
+            # dechargement est annule si la page revient (simple F5).
+            started, skipped = unload_after_leave()
+            self._json(200, {"ok": started, "deferred": started, "skipped": skipped})
         else:
             self._json(404, {"error": {"message": f"Route inconnue : {path}"}})
 
@@ -835,7 +922,7 @@ class Handler(BaseHTTPRequestHandler):
         if not safe or not file_path.exists() or not file_path.is_file():
             self._json(404, {"error": {"message": "Fichier audio introuvable."}})
             return
-        data = file_path.read_bytes()
+        size = file_path.stat().st_size
         extra = {
             "Accept-Ranges": "bytes",
             "Content-Disposition": f'inline; filename="{safe.encode("ascii", "ignore").decode() or "song.wav"}"',
@@ -843,24 +930,40 @@ class Handler(BaseHTTPRequestHandler):
         rng = self.headers.get("Range")
         if rng:
             match = re.match(r"bytes=(\d*)-(\d*)", rng)
-            if match:
-                start = int(match.group(1) or 0)
-                end = int(match.group(2) or (len(data) - 1))
-                end = min(end, len(data) - 1)
-                if start <= end:
-                    chunk = data[start : end + 1]
-                    self.send_response(206)
-                    self.send_header("Content-Type", "audio/wav")
-                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
-                    self.send_header("Accept-Ranges", "bytes")
-                    self.send_header("Content-Length", str(len(chunk)))
+            if match and (match.group(1) or match.group(2)) and size > 0:
+                if match.group(1):
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else size - 1
+                else:
+                    # plage suffixe : « bytes=-500 » = les 500 derniers octets
+                    start = max(0, size - int(match.group(2)))
+                    end = size - 1
+                if start >= size or start > end:
+                    # plage hors bornes : 416 comme le demande la RFC 9110
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
                     self.end_headers()
-                    try:
-                        self.wfile.write(chunk)
-                    except Exception:
-                        pass
                     return
-        self._send(200, data, "audio/wav", extra)
+                end = min(end, size - 1)
+                length = end - start + 1
+                # On ne lit QUE la plage demandee : un seek dans un WAV de
+                # 55 Mo ne doit pas relire les 55 Mo a chaque deplacement.
+                with file_path.open("rb") as handle:
+                    handle.seek(start)
+                    chunk = handle.read(length)
+                self.send_response(206)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(len(chunk)))
+                self.end_headers()
+                try:
+                    self.wfile.write(chunk)
+                except Exception:
+                    pass
+                return
+        self._send(200, file_path.read_bytes(), "audio/wav", extra)
 
     def _state(self) -> None:
         ready = ENGINE.exe is not None and engine_ready(ENGINE.port)
@@ -976,6 +1079,70 @@ def unload_engine_model(timeout: float = 8.0) -> bool:
         return status == 200
     except Exception:
         return False
+
+
+def local_host_names(host: str) -> set:
+    """Noms d'hote acceptes dans l'en-tete Host et dans Origin.
+
+    Ecoute sur une adresse locale : seuls les noms de boucle locale sont valides.
+    Ecoute sur une adresse explicite : ce nom uniquement. Ecoute sur toutes les
+    interfaces (0.0.0.0) : ensemble vide, donc controle desactive (on se rabat
+    alors sur la comparaison Origin == Host, qui reste une verification
+    same-origin).
+    """
+    host = (host or "").strip().lower()
+    if host in ("", "0.0.0.0", "::", "[::]"):
+        return set()
+    if host in ("localhost", "127.0.0.1", "::1", "[::1]") or host.startswith("127."):
+        return {"localhost", "127.0.0.1", "::1"}
+    return {host}
+
+
+def touch_activity() -> None:
+    """Note qu'une page de l'interface vient de parler au serveur."""
+    global _LAST_ACTIVITY
+    _LAST_ACTIVITY = time.monotonic()
+
+
+def has_running_job() -> bool:
+    """Vrai si une generation est en cours (elle serait tuee par un dechargement)."""
+    with JOBS_LOCK:
+        return any(job.get("status") == "running" for job in JOBS.values())
+
+
+def unload_after_leave() -> tuple:
+    """Fermeture de l'onglet : decharge le modele apres un delai de grace.
+
+    Le delai distingue une vraie fermeture d'un simple F5 : quand la page se
+    recharge, elle rappelle aussitot /api/state et /api/history, ce qui repousse
+    le dechargement (et evite de perdre 30 a 60 s au lancement suivant).
+    Aucun dechargement n'a lieu tant qu'une generation tourne.
+    """
+    global _UNLOAD_TIMER
+    if has_running_job():
+        return False, "job_en_cours"
+    with _UNLOAD_LOCK:
+        if _UNLOAD_TIMER is not None:
+            _UNLOAD_TIMER.cancel()
+        left_at = _LAST_ACTIVITY   # instant ou l'onglet a signale sa fermeture
+
+        def later() -> None:
+            global _UNLOAD_TIMER
+            with _UNLOAD_LOCK:
+                _UNLOAD_TIMER = None
+            # Toute requete venue APRES le beacon = la page est revenue (F5,
+            # retour arriere, nouvel onglet) : on garde le modele en memoire.
+            if _LAST_ACTIVITY > left_at:
+                log("[i] Onglet recharge : modele conserve en memoire.")
+                return
+            if unload_engine_model(timeout=5):
+                log("[i] Onglet ferme : modele decharge, VRAM liberee.")
+
+        timer = threading.Timer(UNLOAD_GRACE, later)
+        timer.daemon = True
+        _UNLOAD_TIMER = timer
+        timer.start()
+    return True, ""
 
 
 def cleanup() -> None:
@@ -1137,8 +1304,9 @@ def main() -> int:
     else:
         log("[i] Mode --no-engine : moteur non demarre.")
 
-    global HOST
+    global HOST, _LOCAL_NAMES
     HOST = args.host
+    _LOCAL_NAMES = local_host_names(HOST)   # noms d'hote autorises pour les POST
     port = args.port
     if not port_is_free(port):
         port = next((p for p in range(port + 1, port + 40) if port_is_free(p)), port)

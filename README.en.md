@@ -264,7 +264,9 @@ shutdown (`SetConsoleCtrlHandler`), plus `SIGTERM` / `SIGBREAK` / `SIGHUP` and a
 Two extra safety nets:
 
 - **browser tab closed** → a `POST /api/bye` beacon frees the VRAM while keeping the engine warm
-  (instant reload if you come back);
+  (instant reload if you come back). The unload is **deferred by 5 seconds** and cancelled if the
+  page comes back: a plain **F5** no longer costs the 30–60 s model reload, and nothing is unloaded
+  while a generation is running;
 - **30 minutes idle** → the engine unloads the model on its own (`idle_unload_ms`).
 
 `3-ARRETER.bat` is kept as an **emergency script** (window killed brutally, orphan process).
@@ -353,10 +355,23 @@ The application code lives in **5 files**: `server.py` (~1,150 lines), `index.ht
 | GET | `/api/pending`, `/api/pending/<id>` | queues and running jobs |
 | POST | `/api/update` | notes / metadata of an entry |
 | POST | `/api/import`, GET `/api/export` | JSON import / export of the history |
-| POST | `/api/unload` | unload the model (free VRAM) |
-| POST | `/api/bye` | tab-close beacon |
+| POST | `/api/unload` | unload the model (free VRAM; `409` while a generation is running) |
+| POST | `/api/bye` | tab-close beacon (deferred unload, see above) |
 | DELETE | `/api/history/<id>` | delete an entry and its WAV |
 | GET | `/audio/<file>` | playback / download (supports `Range`) |
+
+To script the API from a terminal, send **`Content-Type: application/json`**:
+
+```bash
+curl -X POST http://127.0.0.1:8090/api/generate \
+     -H "Content-Type: application/json" \
+     -d '{"title":"Test","lyrics":"[instrumental]","style":"synthwave"}'
+```
+
+Any other type is rejected (`403`): that is what stops a web page open in the same browser from
+driving the app behind your back (starting generations, importing entries, unloading the model).
+It comes on top of the `Host` header check (against *DNS rebinding*) and an explicit rejection of
+`Sec-Fetch-Site: cross-site` / non-local origins.
 
 The audio.cpp engine is driven through its official API:
 `POST /v1/tasks/run`, `POST /v1/tasks/unload_all_models`, `GET /health`, `GET /v1/models`.
@@ -389,10 +404,6 @@ one click on an ordinary PC.
 
 ## 🗺️ Roadmap ideas
 
-- [x] Full French/English interface (toggle in the top bar)
-- [x] Screenshots and an audio demo in this readme
-- [x] Client-side generation queue (several songs in a row)
-- [x] ABC score editing with re-synthesis
 - [ ] Reference audio import (YuE2 *cover* workflow: `cot = melody`) — the ABC half already
   works (edit/paste a score, `cot = melody`); the audio half waits for audio.cpp to ship
   SheetSage2 (audio → score transcription) in a stable release

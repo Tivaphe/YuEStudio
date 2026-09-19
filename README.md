@@ -276,7 +276,9 @@ et extinction du PC (`SetConsoleCtrlHandler`), plus `SIGTERM`/`SIGHUP` et un `at
 Deux filets supplémentaires :
 
 - **onglet du navigateur fermé** → un beacon `POST /api/bye` libère la VRAM tout en gardant le moteur
-  chaud (rechargement immédiat si vous revenez) ;
+  chaud (rechargement immédiat si vous revenez). Le déchargement est **différé de 5 secondes** et
+  annulé si la page revient : un simple **F5** ne coûte donc plus les 30 à 60 s de rechargement du
+  modèle, et rien n'est déchargé tant qu'une génération tourne ;
 - **30 minutes d'inactivité** → le moteur décharge le modèle de lui-même (`idle_unload_ms`).
 
 `3-ARRETER.bat` reste fourni comme **script de secours** (fenêtre fermée brutalement, processus orphelin).
@@ -362,10 +364,23 @@ Le code applicatif tient dans **5 fichiers** : `server.py` (≈ 1 150 lignes), `
 | GET | `/api/pending`, `/api/pending/<id>` | files et travaux en cours |
 | POST | `/api/update` | notes / métadonnées d'une entrée |
 | POST | `/api/import`, GET `/api/export` | import / export JSON de l'historique |
-| POST | `/api/unload` | décharge le modèle (libère la VRAM) |
-| POST | `/api/bye` | beacon de fermeture d'onglet |
+| POST | `/api/unload` | décharge le modèle (libère la VRAM ; refusé `409` pendant une génération) |
+| POST | `/api/bye` | beacon de fermeture d'onglet (déchargement différé, voir plus haut) |
 | DELETE | `/api/history/<id>` | supprime une entrée et son WAV |
 | GET | `/audio/<fichier>` | lecture / téléchargement (gère `Range`) |
+
+Pour scripter l'API depuis un terminal, envoyez **`Content-Type: application/json`** :
+
+```bash
+curl -X POST http://127.0.0.1:8090/api/generate \
+     -H "Content-Type: application/json" \
+     -d '{"title":"Test","lyrics":"[instrumental]","style":"synthwave"}'
+```
+
+Tout autre type est refusé (`403`) : c'est ce qui empêche une page web ouverte dans le même
+navigateur de piloter l'application à votre insu (lancement de générations, import d'entrées,
+déchargement du modèle). S'y ajoutent le contrôle de l'en-tête `Host` (contre le *DNS rebinding*)
+et le refus explicite de `Sec-Fetch-Site: cross-site` / d'une origine non locale.
 
 Le moteur audio.cpp est piloté via son API officielle :
 `POST /v1/tasks/run`, `POST /v1/tasks/unload_all_models`, `GET /health`, `GET /v1/models`.
@@ -399,11 +414,10 @@ utilisables en un clic sur un PC grand public.
 
 ## 🗺️ Idées d'évolution
 
-- [ ] Capture d'écran et démo audio dans ce README
-- [ ] Génération en file d'attente côté interface (plusieurs morceaux d'affilée)
-- [ ] Édition de la partition ABC avec re-synthèse
-- [ ] Import d'un audio de référence (workflow *cover* de YuE2 : `cot = melody`)
-- [ ] Version anglaise de l'interface
+- [ ] Import d'un audio de référence (workflow *cover* de YuE2 : `cot = melody`) — la moitié ABC
+  fonctionne déjà (éditer ou coller une partition, `cot = melody`) ; la moitié audio attend
+  qu'audio.cpp livre SheetSage2 (audio → partition) dans une version stable
+- [ ] Traduction anglaise complète des guides (`LISEZ-MOI.md`, `GUIDE-PAROLES.md`)
 - [ ] Paquet macOS / Linux (audio.cpp existe déjà pour ces plateformes)
 
 Les contributions sont bienvenues : ouvrez une issue ou une pull request.

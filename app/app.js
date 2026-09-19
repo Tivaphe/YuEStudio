@@ -1205,7 +1205,9 @@ function initUnloadOnClose() {
     if (event.persisted) return;            // simple mise en cache, on reste
     try {
       if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/bye', new Blob([], { type: 'text/plain' }));
+        // application/json et non text/plain : le serveur n'accepte plus que ce
+        // type (un site tiers ne peut pas l'envoyer sans preflight CORS).
+        navigator.sendBeacon('/api/bye', new Blob(['{}'], { type: 'application/json' }));
       }
     } catch (e) { /* jamais bloquant */ }
   });
@@ -1364,7 +1366,12 @@ function initUi() {
   });
 
   window.addEventListener('beforeunload', (ev) => {
-    if (STATE.job) {
+    // On avertit aussi quand la file d'attente n'est pas vide : elle vit en
+    // memoire du navigateur, un rechargement la perdrait.
+    const busy = STATE.job
+      || QUEUE.running
+      || QUEUE.items.some((item) => item.status === 'pending');
+    if (busy) {
       ev.preventDefault();
       ev.returnValue = '';
     }
