@@ -36,19 +36,61 @@ Light theme and French interface at a glance:
 The track **"cyber"** was composed and performed entirely **on-device** by the model, on an ordinary PC
 (i5-11400, 32 GB RAM, RTX 2000 Ada 16 GB). No account, no cloud, no subscription:
 
+[![Cover art for "cyber": a neon synthwave city — click to play](docs/exemples/cyber-cover.jpg)](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)
+
 ▶️ **[Listen to "cyber" — plays right in your browser](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
 — synthwave instrumental, **2 min 06**: one click and the track starts on its own in your browser's
-audio player, nothing to install. *(MP3 192 kbps, 3 MB.)*
+audio player, nothing to install. *(MP3 192 kbps, 3 MB — or click the cover art.)*
 
 - 💿 **The same take as a lossless WAV** (24 MB, 48 kHz / 16-bit stereo):
   [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
-  (download) — both files are versioned in [`docs/exemples/`](docs/exemples).
+  (download) — the files are versioned in [`docs/exemples/`](docs/exemples).
 - ℹ️ The online playback goes through **jsDelivr**: GitHub serves its raw files with a
   `Content-Disposition: attachment` header, which forces a download instead of playback. So
   `raw.githubusercontent.com` links open a "Save as…" dialog rather than the audio.
 - The exact recipe, to replay it on your machine:
   - **Style**: `Synthwave années 80, basse, nappes, rythme entraînant, chill` (French tags work too)
   - **Lyrics**: `[instrumental]` — no text lines, hence no vocals: the model plays instruments only.
+
+<details>
+<summary>🛠️ Why not an actual player "like on Hugging Face", right inside this README?</summary>
+
+<br>
+
+On Hugging Face, the model card shows the track with a real player, because the platform lets raw
+HTML through:
+
+```html
+<audio controls preload="none" aria-label="Cyber Metal" src="…/cyber-metal.mp3"></audio>
+```
+
+**GitHub strips those tags.** Proof: sent to GitHub's Markdown rendering API (`POST /markdown`),
+the `<audio …>` tag **vanishes** from the produced HTML — as do `<video>` and `<iframe>` — leaving
+an empty paragraph. No custom player can render in a README, whatever the audio format (WAV, MP3,
+OGG…).
+
+**The only player GitHub accepts is its own**: paste a GitHub asset URL **alone on its line** and
+GitHub turns it into an inline player with sound.
+
+    https://github.com/user-attachments/assets/<id>
+
+Those URLs cannot be crafted by hand: they are minted by **dragging the file into GitHub's web
+editor** (README, issue or comment) while signed in.
+
+The ready-to-drop file is provided:
+[`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
+cover art + AAC audio, 3 MB (the still frame shows the cover, the player carries the sound).
+One-time procedure, from the repository owner's account:
+
+1. open this README in GitHub's **web editor** (pencil ✏️ button);
+2. **drag** `docs/exemples/cyber-readme-player.mp4` into the text field;
+3. GitHub inserts a `https://github.com/user-attachments/assets/…` line: leave it **alone on its
+   line**, where you want the player in the section;
+4. save: the player shows up on the project page, with controls and sound.
+
+This is also the official way to embed demo videos — nothing to host elsewhere.
+
+</details>
 
 ---
 
@@ -282,7 +324,7 @@ YueStudio/
 ├─ PROMPT-LLM.md          the prompt to give an LLM to write your lyrics
 ├─ README.txt             plain-text version, no formatting
 ├─ docs/screenshots/      README screenshots
-├─ docs/exemples/         "cyber" example track (streamable MP3 + lossless WAV)
+├─ docs/exemples/         "cyber" example track (streamable MP3, lossless WAV, cover, player MP4)
 │
 ├─ engine/                created at install time: audio.cpp binaries + logs
 ├─ models/Yue2-3B-GGUF/   created at install time: GGUF weights (~3 to 13 GB)

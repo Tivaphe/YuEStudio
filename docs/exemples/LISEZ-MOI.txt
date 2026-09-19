@@ -1,37 +1,56 @@
-Exemples audio référencés par les README :
+Fichiers de l'exemple audio « cyber » (instrumental synthwave, généré en local par YueStudio — YuE2-3B) :
 
-    2026-09-19_135052_cyber.mp3   écoute directe dans le navigateur (3 Mo, 192 kbps, 2 min 06)
-    2026-09-19_135052_cyber.wav   version sans perte (24 Mo, 48 kHz / 16 bits stéréo)
+    2026-09-19_135052_cyber.wav              24 Mo  original sans perte (48 kHz / 16 bits stéréo, 2 min 06)
+    2026-09-19_135052_cyber.mp3               3 Mo  écoute en ligne (192 kbps) — le lien des README
+    cyber-cover.jpg                         160 Ko  pochette affichée dans les README (cliquable)
+    cyber-readme-player.mp4                   3 Mo  pochette + audio, à glisser dans l'éditeur GitHub
+                                                     pour obtenir un vrai lecteur dans le README
 
-(morceau « cyber », instrumental synthwave généré en local par YueStudio — YuE2-3B)
-
-Pourquoi deux fichiers ? Le MP3 est celui à utiliser pour l'écoute en ligne : GitHub sert ses
-fichiers bruts avec l'en-tête « Content-Disposition: attachment », donc un lien
-« raw.githubusercontent.com » force le téléchargement au lieu de la lecture. Le bouton
-« Écouter » des README passe donc par jsDelivr, qui sert le même fichier du dépôt avec le bon
-type MIME (audio/mpeg) et sans cet en-tête :
+Pourquoi un MP3 pour l'écoute en ligne ? GitHub sert ses fichiers bruts avec l'en-tête
+« Content-Disposition: attachment » : un lien « raw.githubusercontent.com » force donc le
+téléchargement au lieu de la lecture. Le bouton « Écouter » des README passe donc par jsDelivr,
+qui sert le même fichier du dépôt avec le bon type MIME (audio/mpeg) et sans cet en-tête :
 
     https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3
 
-Pour régénérer le MP3 depuis le WAV :
+Pourquoi un MP4 « lecteur » ? GitHub supprime les balises <audio> et <video> du Markdown (elles
+n'apparaissent pas dans le HTML rendu). Le seul lecteur qu'il affiche est le sien, obtenu en
+collant seul sur sa ligne une URL d'asset GitHub — URL que l'on ne peut obtenir qu'en glissant
+le fichier dans l'éditeur web de GitHub (README, issue ou commentaire). Le MP4 est prêt pour ça.
+
+Commandes de régénération :
 
     ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
+    ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
+           -c:v libx264 -preset veryfast -crf 26 -tune stillimage -pix_fmt yuv420p -r 2 \
+           -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720" \
+           -c:a aac -b:a 160k -movflags +faststart -t 126.02 cyber-readme-player.mp4
 
 --- English ---
 
-Audio samples referenced by the readmes:
+Files for the "cyber" audio sample ("cyber", a synthwave instrumental generated locally by
+YueStudio — YuE2-3B):
 
-    2026-09-19_135052_cyber.mp3   streams in the browser (3 MB, 192 kbps, 2 min 06)
-    2026-09-19_135052_cyber.wav   lossless original (24 MB, 48 kHz / 16-bit stereo)
+    2026-09-19_135052_cyber.wav              24 MB  lossless original (48 kHz / 16-bit stereo, 2 min 06)
+    2026-09-19_135052_cyber.mp3               3 MB  online listening (192 kbps) — the link used by the readmes
+    cyber-cover.jpg                         160 KB  cover art shown in the readmes (clickable)
+    cyber-readme-player.mp4                   3 MB  cover art + audio, to drag into GitHub's editor
+                                                     to get a real player inside the README
 
-("cyber", a synthwave instrumental generated locally by YueStudio — YuE2-3B)
+Why an MP3 for online listening? GitHub serves its raw files with a "Content-Disposition:
+attachment" header, so a "raw.githubusercontent.com" link forces a download instead of playback.
+The readmes' "Listen" link therefore goes through jsDelivr, which serves the same in-repo file
+with the proper MIME type (audio/mpeg) and without that header.
 
-Why two files? Use the MP3 for online listening: GitHub serves its raw files with a
-"Content-Disposition: attachment" header, so a "raw.githubusercontent.com" link forces a
-download instead of playback. The readmes' "Listen" button therefore goes through jsDelivr,
-which serves the same in-repo file with the proper MIME type (audio/mpeg) and without that
-header.
+Why a "player" MP4? GitHub strips <audio> and <video> tags from Markdown (they never appear in
+the rendered HTML). The only player it renders is its own, obtained by pasting a GitHub asset URL
+alone on its line — a URL you can only get by dragging the file into GitHub's web editor (README,
+issue or comment). The MP4 is ready for that.
 
-To rebuild the MP3 from the WAV:
+Rebuild commands:
 
     ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
+    ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
+           -c:v libx264 -preset veryfast -crf 26 -tune stillimage -pix_fmt yuv420p -r 2 \
+           -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720" \
+           -c:a aac -b:a 160k -movflags +faststart -t 126.02 cyber-readme-player.mp4

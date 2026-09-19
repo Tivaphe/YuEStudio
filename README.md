@@ -39,14 +39,15 @@ Le thème clair et l'interface anglaise, d'un coup d'œil :
 Le morceau **« cyber »** a été composé et joué entièrement **en local** par le modèle, sur un PC
 courant (i5-11400, 32 Go de RAM, RTX 2000 Ada 16 Go) — sans compte, sans cloud, sans abonnement :
 
+[![Pochette de « cyber » : ville néon synthwave — cliquer pour écouter](docs/exemples/cyber-cover.jpg)](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)
+
 ▶️ **[Écouter « cyber » — lecture directe dans le navigateur](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
 — instrumental synthwave, **2 min 06** : un clic et le morceau démarre tout seul dans le lecteur
-audio de votre navigateur, sans rien installer. *(MP3 192 kbps, 3 Mo.)*
+audio de votre navigateur, sans rien installer. *(MP3 192 kbps, 3 Mo — ou cliquez sur la pochette.)*
 
 - 💿 **La même prise en WAV sans perte** (24 Mo, 48 kHz / 16 bits stéréo) :
   [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
-  (téléchargement) — les deux fichiers sont versionnés dans
-  [`docs/exemples/`](docs/exemples).
+  (téléchargement) — les fichiers sont versionnés dans [`docs/exemples/`](docs/exemples).
 - ℹ️ Le lecteur en ligne passe par **jsDelivr** : GitHub sert ses fichiers bruts avec un en-tête
   `Content-Disposition: attachment`, qui force le téléchargement au lieu de la lecture. Les liens
   du type `raw.githubusercontent.com` ouvrent donc une fenêtre « Enregistrer sous… », pas l'audio.
@@ -54,6 +55,46 @@ audio de votre navigateur, sans rien installer. *(MP3 192 kbps, 3 Mo.)*
   - **Style** : `Synthwave années 80, basse, nappes, rythme entraînant, chill`
   - **Paroles** : `[instrumental]` — aucune ligne de texte, donc aucune voix : le modèle ne joue
     que les instruments.
+
+<details>
+<summary>🛠️ Pourquoi pas un lecteur « comme sur Hugging Face », directement dans ce README ?</summary>
+
+<br>
+
+Sur Hugging Face, la carte du modèle affiche le morceau avec un vrai lecteur, parce que la
+plateforme laisse passer le HTML :
+
+```html
+<audio controls preload="none" aria-label="Cyber Metal" src="…/cyber-metal.mp3"></audio>
+```
+
+**GitHub, lui, supprime ces balises.** Test à l'appui : envoyée à l'API de rendu Markdown de
+GitHub (`POST /markdown`), la balise `<audio …>` **disparaît** du HTML produit — comme `<video>`
+et `<iframe>` — il ne reste qu'un paragraphe vide. Aucun lecteur maison ne peut donc s'afficher
+dans un README, quel que soit le format du fichier (WAV, MP3, OGG…).
+
+**Le seul lecteur que GitHub accepte, c'est le sien** : il suffit de coller une URL d'asset
+GitHub **seule sur sa ligne**, et GitHub la transforme en lecteur intégré avec le son.
+
+    https://github.com/user-attachments/assets/<identifiant>
+
+Ces URL ne se fabriquent pas à la main : elles sont créées par un **glisser-déposer du fichier
+dans l'éditeur web** de GitHub (README, issue ou commentaire), une fois connecté.
+
+Le fichier prêt à déposer est fourni :
+[`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
+pochette + audio AAC, 3 Mo (l'image fixe affiche la pochette, le lecteur a le son). Marche à
+suivre, une seule fois, depuis le compte propriétaire du dépôt :
+
+1. ouvrir ce README dans l'**éditeur web** GitHub (bouton crayon ✏️) ;
+2. **glisser** `docs/exemples/cyber-readme-player.mp4` dans la zone de texte ;
+3. GitHub insère une ligne `https://github.com/user-attachments/assets/…` : la laisser **seule
+   sur sa ligne**, à l'endroit voulu dans la section ;
+4. enregistrer : le lecteur s'affiche dans la page du projet, avec les contrôles et le son.
+
+C'est aussi la méthode officielle pour les vidéos de démonstration : rien à héberger ailleurs.
+
+</details>
 
 ---
 
@@ -291,7 +332,7 @@ YueStudio/
 ├─ PROMPT-LLM.md          le prompt à donner à un LLM pour écrire vos paroles
 ├─ README.txt           version texte brut, sans mise en forme
 ├─ docs/screenshots/    captures d'écran des README
-├─ docs/exemples/       morceau exemple « cyber » (MP3 d'écoute + WAV sans perte)
+├─ docs/exemples/       morceau exemple « cyber » (écoute MP3, WAV, pochette, MP4 lecteur)
 │
 ├─ engine/                créé à l'installation : binaires audio.cpp + journaux
 ├─ models/Yue2-3B-GGUF/   créé à l'installation : poids GGUF (~3 à 13 Go)
