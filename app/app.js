@@ -890,8 +890,90 @@ async function resynthFromScore(entry, card) {
 }
 
 // ---------------------------------------------------------------------------
-// Résultat
+// Contrôleur de lecteur Piano Roll & Synthétiseur ABC
 // ---------------------------------------------------------------------------
+
+function setupAbcViewer(container, getAbc, setAbc) {
+  if (!window.YuESynth) return;
+  const playBtn = container.querySelector('.btn-score-play');
+  const stopBtn = container.querySelector('.btn-score-stop');
+  const timeEl = container.querySelector('.score-play-time');
+  const wrap = container.querySelector('.pianoroll-wrap');
+  if (!playBtn || !wrap) return;
+
+  let player = null;
+
+  const updateRoll = () => {
+    const abc = getAbc();
+    if (!abc) {
+      wrap.innerHTML = '';
+      return;
+    }
+    const parsed = window.YuESynth.parseAbcScore(abc);
+    wrap.innerHTML = window.YuESynth.renderPianoRollSvg(parsed);
+    if (parsed) {
+      timeEl.textContent = `0:00 / ${fmtDuration(parsed.totalDuration * 1000)}`;
+    }
+  };
+
+  const stopPlayback = () => {
+    if (player) {
+      player.stop();
+      player = null;
+    }
+    playBtn.textContent = '▶️ ' + t('Écouter au synthé');
+    stopBtn.disabled = true;
+    const cur = wrap.querySelector('.pr-cursor');
+    if (cur) cur.style.display = 'none';
+  };
+
+  playBtn.addEventListener('click', () => {
+    const abc = getAbc();
+    if (!abc) return;
+
+    if (player && player.isPlaying) {
+      player.pause();
+      playBtn.textContent = '▶️ ' + t('Reprendre');
+      return;
+    }
+
+    if (!player) {
+      const parsed = window.YuESynth.parseAbcScore(abc);
+      const totalDur = (parsed && parsed.totalDuration) || 0;
+
+      player = new window.YuESynth.AbcPlayer(
+        abc,
+        (current, total) => {
+          timeEl.textContent = `${fmtDuration(current * 1000)} / ${fmtDuration(total * 1000)}`;
+          const cur = wrap.querySelector('.pr-cursor');
+          if (cur && total > 0) {
+            const plotW = 720 - 36 - 10;
+            const x = 36 + (current / total) * plotW;
+            cur.setAttribute('x1', x);
+            cur.setAttribute('x2', x);
+            cur.style.display = 'block';
+          }
+        },
+        () => {
+          stopPlayback();
+        }
+      );
+    }
+
+    player.play();
+    playBtn.textContent = '⏸ ' + t('Pause');
+    stopBtn.disabled = false;
+  });
+
+  stopBtn.addEventListener('click', stopPlayback);
+
+  updateRoll();
+
+  return {
+    refresh: updateRoll,
+    stop: stopPlayback,
+  };
+}
 
 function showResult(entry, url) {
   STATE.lastResult = entry;
@@ -927,6 +1009,7 @@ function showResult(entry, url) {
   if (entry.score_abc) {
     $('#result-score').textContent = entry.score_abc;
     scoreWrap.classList.remove('hidden');
+    setupAbcViewer($('#result-player-panel'), () => entry.score_abc);
   } else {
     scoreWrap.classList.add('hidden');
   }
@@ -982,6 +1065,29 @@ function renderHistorySummary(entries) {
 
 function renderHistory() {
   const list = $('#history-list');
+
+  // Si un élément audio était en cours de lecture, on mémorise son fichier et son temps de lecture
+  let playingFile = null;
+  let playingTime = 0;
+  const currentAudios = list.querySelectorAll('audio.h-audio');
+  for (const a of currentAudios) {
+    if (!a.paused && a.src) {
+      const match = a.src.match(/\/audio\/([^?#]+)/);
+      if (match) {
+        playingFile = decodeURIComponent(match[1]);
+        playingTime = a.currentTime;
+      }
+      break;
+    }
+  }
+
+  // Mémorise aussi les cartes dont les paroles ou la partition étaient dépliées
+  const openCards = new Set();
+  list.querySelectorAll('.hcard[data-id]').forEach((card) => {
+    const isUnclipped = !$('.h-lyrics', card)?.classList.contains('clipped');
+    if (isUnclipped) openCards.add(card.dataset.id);
+  });
+
   list.innerHTML = '';
   const entries = filteredHistory();
 
@@ -993,7 +1099,21 @@ function renderHistory() {
   const tpl = $('#tpl-history-card');
   entries.forEach((entry) => {
     const node = tpl.content.firstElementChild.cloneNode(true);
+    node.dataset.id = entry.id;
     fillCard(node, entry);
+    if (openCards.has(String(entry.id))) {
+      const lyricsEl = $('.h-lyrics', node);
+      const toggleBtn = $('.toggle-lyrics', node);
+      if (lyricsEl && toggleBtn) {
+        lyricsEl.classList.remove('clipped');
+        toggleBtn.textContent = t('👁 Replier');
+      }
+    }
+    const audioEl = $('.h-audio', node);
+    if (playingFile && entry.audio_file === playingFile && audioEl) {
+      audioEl.currentTime = playingTime;
+      audioEl.play().catch(() => {});
+    }
     list.appendChild(node);
   });
 
@@ -1044,18 +1164,85 @@ function fillCard(card, entry) {
     $('.h-score-text', card).textContent = entry.score_abc;
     $('.copy-score', card).addEventListener('click', () => copyText(entry.score_abc, 'Partition ABC'));
 
+    const viewer = setupAbcViewer(scoreBlock, () => {
+      const editVal = $('.h-score-edit', card).value;
+      return editVal || entry.score_abc;
+    });
+
     const editBox = $('.score-edit', card);
     const openBtn = $('.h-score-edit-open', card);
+    const scoreEditArea = $('.h-score-edit', card);
+
+    // Initialisation des champs d'outils rapides
+    const parsed = window.YuESynth ? window.YuESynth.parseAbcScore(entry.score_abc) : null;
+    if (parsed) {
+      const bpmInput = $('.h-score-bpm', card);
+      const keyInput = $('.h-score-key', card);
+      if (bpmInput) bpmInput.value = parsed.tempo;
+      if (keyInput) keyInput.value = parsed.key;
+    }
+
     openBtn.addEventListener('click', () => {
-      $('.h-score-edit', card).value = entry.score_abc || '';
+      scoreEditArea.value = entry.score_abc || '';
       editBox.classList.remove('hidden');
       openBtn.classList.add('hidden');
     });
+
     $('.h-score-edit-cancel', card).addEventListener('click', () => {
       editBox.classList.add('hidden');
       openBtn.classList.remove('hidden');
+      if (viewer) viewer.stop();
     });
-    $('.h-resynth', card).addEventListener('click', () => resynthFromScore(entry, card));
+
+    // Écoute de l'édition texte manuelle pour rafraîchir le piano roll
+    scoreEditArea.addEventListener('input', () => {
+      if (viewer) viewer.refresh();
+    });
+
+    // Actions rapides : BPM
+    const applyBpmBtn = $('.h-apply-bpm', card);
+    if (applyBpmBtn) {
+      applyBpmBtn.addEventListener('click', () => {
+        const bpm = parseInt($('.h-score-bpm', card).value, 10);
+        if (!bpm || bpm < 30 || bpm > 300) { toast(t('Tempo invalide (30-300).'), 'warn'); return; }
+        const current = scoreEditArea.value || entry.score_abc;
+        scoreEditArea.value = window.YuESynth.updateAbcBpm(current, bpm);
+        if (viewer) viewer.refresh();
+        toast(tf('Tempo réglé à {bpm} BPM.', { bpm }), 'ok', 2000);
+      });
+    }
+
+    // Actions rapides : Tonalité
+    const applyKeyBtn = $('.h-apply-key', card);
+    if (applyKeyBtn) {
+      applyKeyBtn.addEventListener('click', () => {
+        const key = ($('.h-score-key', card).value || '').trim();
+        if (!key) return;
+        const current = scoreEditArea.value || entry.score_abc;
+        scoreEditArea.value = window.YuESynth.updateAbcKey(current, key);
+        if (viewer) viewer.refresh();
+        toast(tf('Tonalité changée en {key}.', { key }), 'ok', 2000);
+      });
+    }
+
+    // Actions rapides : Remplacement d'accord
+    const applyChordBtn = $('.h-apply-chord', card);
+    if (applyChordBtn) {
+      applyChordBtn.addEventListener('click', () => {
+        const oldC = ($('.h-score-old-chord', card).value || '').trim();
+        const newC = ($('.h-score-new-chord', card).value || '').trim();
+        if (!oldC || !newC) { toast(t('Précisez les accords source et cible.'), 'warn'); return; }
+        const current = scoreEditArea.value || entry.score_abc;
+        scoreEditArea.value = window.YuESynth.replaceAbcChord(current, oldC, newC);
+        if (viewer) viewer.refresh();
+        toast(tf('Accord {oldC} remplacé par {newC}.', { oldC, newC }), 'ok', 2500);
+      });
+    }
+
+    $('.h-resynth', card).addEventListener('click', () => {
+      if (viewer) viewer.stop();
+      resynthFromScore(entry, card);
+    });
     $('.h-resynth-queue', card).addEventListener('click', () => {
       const payload = buildResynthPayload(entry, card);
       if (payload) addToQueuePayload(payload);

@@ -551,3 +551,77 @@ html.theme-ready .btn {
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; resize: vertical; }
 .score-edit-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .score-cot-label select { margin-left: 6px; }
+
+/* ------------------------------------------------- Synthétiseur audio & Piano Roll */
+.score-player-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+.score-player-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.score-play-time {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.score-legend {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.dot-vocal { background: #38bdf8; }
+.dot-ins { background: #a78bfa; }
+.pianoroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+.score-quick-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+.hint-strong {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.quick-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.quick-tool-item input {
+  padding: 3px 6px;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+}
+
