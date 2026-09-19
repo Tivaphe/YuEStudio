@@ -1,0 +1,702 @@
+diff --git a/LISEZ-MOI.md b/LISEZ-MOI.md
+index 01f550a..9406740 100644
+--- a/LISEZ-MOI.md
++++ b/LISEZ-MOI.md
+@@ -1,4 +1,4 @@
+-﻿# 🎵 YueStudio — créer de la musique en local avec YuE2-3B
++# 🎵 YueStudio — créer de la musique en local avec YuE2-3B
+ 
+ Application simple pour générer des chansons complètes (voix + instruments, 48 kHz stéréo)
+ **entièrement sur votre PC**, avec le modèle ouvert [m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B)
+@@ -154,7 +154,8 @@ chansons à l'avance :
+ 
+ Pendant qu'une file tourne, le bouton Générer est verrouillé (un seul morceau à la fois) :
+ le message propose d'ajouter à la file plutôt. La file vit dans l'onglet du navigateur :
+-elle n'est pas conservée si vous fermez YueStudio.
++elle n'est pas conservée si vous fermez YueStudio — c'est pourquoi le navigateur demande
++confirmation avant un rechargement ou une fermeture tant qu'une génération ou une file attend.
+ 
+ ### Carte « 🤖 Préparer avec une IA » (colonne de droite)
+ 
+@@ -305,7 +306,7 @@ Tous les cas de figure sont couverts :
+ | Croix de la fenêtre | arrêt complet, modèle déchargé |
+ | `Ctrl+C` dans la fenêtre | idem |
+ | Fermeture de session Windows / extinction du PC | idem (gestionnaire `SetConsoleCtrlHandler`) |
+-| Fermeture de l'**onglet du navigateur** | la VRAM est libérée, le moteur reste chaud (rechargement immédiat si vous revenez) |
++| Fermeture de l'**onglet du navigateur** | la VRAM est libérée après un délai de grâce de 5 s, le moteur reste chaud (rechargement immédiat si vous revenez) — un simple **F5** annule le déchargement, et rien n'est déchargé pendant une génération |
+ | 30 minutes sans générer | le moteur décharge le modèle tout seul (`idle_unload_ms`) |
+ | Bouton 🧹 *Libérer la VRAM* | déchargement à la demande, sans rien fermer |
+ 
+diff --git a/README.en.md b/README.en.md
+index ab4f3f2..bf9267c 100644
+--- a/README.en.md
++++ b/README.en.md
+@@ -36,12 +36,66 @@ Light theme and French interface at a glance:
+ The track **"cyber"** was composed and performed entirely **on-device** by the model, on an ordinary PC
+ (i5-11400, 32 GB RAM, RTX 2000 Ada 16 GB). No account, no cloud, no subscription:
+ 
+-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — a synthwave
+-  instrumental, WAV download (GitHub cannot play audio inside a README: click, download, listen).
++[![Cover art for "cyber": a neon synthwave city — click to play](docs/exemples/cyber-cover.jpg)](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)
++
++▶️ **[Listen to "cyber" — plays right in your browser](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
++— synthwave instrumental, **2 min 06**: one click and the track starts on its own in your browser's
++audio player, nothing to install. *(MP3 192 kbps, 3 MB — or click the cover art.)*
++
++- 💿 **The same take as a lossless WAV** (24 MB, 48 kHz / 16-bit stereo):
++  [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
++  (download) — the files are versioned in [`docs/exemples/`](docs/exemples).
++- ℹ️ The online playback goes through **jsDelivr**: GitHub serves its raw files with a
++  `Content-Disposition: attachment` header, which forces a download instead of playback. So
++  `raw.githubusercontent.com` links open a "Save as…" dialog rather than the audio.
+ - The exact recipe, to replay it on your machine:
+   - **Style**: `Synthwave années 80, basse, nappes, rythme entraînant, chill` (French tags work too)
+   - **Lyrics**: `[instrumental]` — no text lines, hence no vocals: the model plays instruments only.
+ 
++<details>
++<summary>🛠️ Why not an actual player "like on Hugging Face", right inside this README?</summary>
++
++<br>
++
++On Hugging Face, the model card shows the track with a real player, because the platform lets raw
++HTML through:
++
++```html
++<audio controls preload="none" aria-label="Cyber Metal" src="…/cyber-metal.mp3"></audio>
++```
++
++**GitHub strips those tags.** Proof: sent to GitHub's Markdown rendering API (`POST /markdown`),
++the `<audio …>` tag **vanishes** from the produced HTML — as do `<video>` and `<iframe>` — leaving
++an empty paragraph. No custom player can render in a README, whatever the audio format (WAV, MP3,
++OGG…).
++
++**The only player GitHub accepts is its own**: paste a GitHub asset URL **alone on its line** and
++GitHub turns it into an inline player with sound.
++
++    https://github.com/user-attachments/assets/<id>
++
++Those URLs cannot be crafted by hand: they are minted by **dragging the file into GitHub's web
++editor** (README, issue or comment) while signed in.
++
++Other approaches tested, all ineffective: bare `.mp4` URL on its own line → GitHub merely renders a
++link; image syntax `![…](…mp4)` → broken image; `<video controls>` → stripped from the output, like
++`<audio>`.
++
++The ready-to-drop file is provided:
++[`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
++**6 MB**: cover art + the track's waveform with a progress cursor, plus AAC sound. Open it: that is
++exactly what your visitors will see. One-time procedure, from the repository owner's account:
++
++1. open this README in GitHub's **web editor** (pencil ✏️ button);
++2. **drag** `docs/exemples/cyber-readme-player.mp4` into the text field;
++3. GitHub inserts a `https://github.com/user-attachments/assets/…` line: leave it **alone on its
++   line**, where you want the player in the section;
++4. save: the player shows up on the project page, with controls and sound.
++
++This is also the official way to embed demo videos — nothing to host elsewhere.
++
++</details>
++
+ ---
+ 
+ ## ✨ Why YueStudio
+@@ -210,7 +264,9 @@ shutdown (`SetConsoleCtrlHandler`), plus `SIGTERM` / `SIGBREAK` / `SIGHUP` and a
+ Two extra safety nets:
+ 
+ - **browser tab closed** → a `POST /api/bye` beacon frees the VRAM while keeping the engine warm
+-  (instant reload if you come back);
++  (instant reload if you come back). The unload is **deferred by 5 seconds** and cancelled if the
++  page comes back: a plain **F5** no longer costs the 30–60 s model reload, and nothing is unloaded
++  while a generation is running;
+ - **30 minutes idle** → the engine unloads the model on its own (`idle_unload_ms`).
+ 
+ `3-ARRETER.bat` is kept as an **emergency script** (window killed brutally, orphan process).
+@@ -274,7 +330,7 @@ YueStudio/
+ ├─ PROMPT-LLM.md          the prompt to give an LLM to write your lyrics
+ ├─ README.txt             plain-text version, no formatting
+ ├─ docs/screenshots/      README screenshots
+-├─ docs/exemples/         "cyber" example track (WAV to drop in)
++├─ docs/exemples/         "cyber" example track (streamable MP3, lossless WAV, cover, player MP4)
+ │
+ ├─ engine/                created at install time: audio.cpp binaries + logs
+ ├─ models/Yue2-3B-GGUF/   created at install time: GGUF weights (~3 to 13 GB)
+@@ -299,11 +355,24 @@ The application code lives in **5 files**: `server.py` (~1,150 lines), `index.ht
+ | GET | `/api/pending`, `/api/pending/<id>` | queues and running jobs |
+ | POST | `/api/update` | notes / metadata of an entry |
+ | POST | `/api/import`, GET `/api/export` | JSON import / export of the history |
+-| POST | `/api/unload` | unload the model (free VRAM) |
+-| POST | `/api/bye` | tab-close beacon |
++| POST | `/api/unload` | unload the model (free VRAM; `409` while a generation is running) |
++| POST | `/api/bye` | tab-close beacon (deferred unload, see above) |
+ | DELETE | `/api/history/<id>` | delete an entry and its WAV |
+ | GET | `/audio/<file>` | playback / download (supports `Range`) |
+ 
++To script the API from a terminal, send **`Content-Type: application/json`**:
++
++```bash
++curl -X POST http://127.0.0.1:8090/api/generate \
++     -H "Content-Type: application/json" \
++     -d '{"title":"Test","lyrics":"[instrumental]","style":"synthwave"}'
++```
++
++Any other type is rejected (`403`): that is what stops a web page open in the same browser from
++driving the app behind your back (starting generations, importing entries, unloading the model).
++It comes on top of the `Host` header check (against *DNS rebinding*) and an explicit rejection of
++`Sec-Fetch-Site: cross-site` / non-local origins.
++
+ The audio.cpp engine is driven through its official API:
+ `POST /v1/tasks/run`, `POST /v1/tasks/unload_all_models`, `GET /health`, `GET /v1/models`.
+ 
+@@ -335,10 +404,6 @@ one click on an ordinary PC.
+ 
+ ## 🗺️ Roadmap ideas
+ 
+-- [x] Full French/English interface (toggle in the top bar)
+-- [x] Screenshots and an audio demo in this readme
+-- [x] Client-side generation queue (several songs in a row)
+-- [x] ABC score editing with re-synthesis
+ - [ ] Reference audio import (YuE2 *cover* workflow: `cot = melody`) — the ABC half already
+   works (edit/paste a score, `cot = melody`); the audio half waits for audio.cpp to ship
+   SheetSage2 (audio → score transcription) in a stable release
+diff --git a/README.md b/README.md
+index eab4444..7b70c51 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-﻿# 🎵 YueStudio
++# 🎵 YueStudio
+ 
+ [**English readme →**](README.en.md)
+ 
+@@ -39,14 +39,68 @@ Le thème clair et l'interface anglaise, d'un coup d'œil :
+ Le morceau **« cyber »** a été composé et joué entièrement **en local** par le modèle, sur un PC
+ courant (i5-11400, 32 Go de RAM, RTX 2000 Ada 16 Go) — sans compte, sans cloud, sans abonnement :
+ 
+-- 🎵 **[2026-09-19_135052_cyber.wav](docs/exemples/2026-09-19_135052_cyber.wav)** — instrumental
+-  synthwave, WAV à télécharger (GitHub ne sait pas lire l'audio dans un README : cliquez,
+-  téléchargez, écoutez).
++[![Pochette de « cyber » : ville néon synthwave — cliquer pour écouter](docs/exemples/cyber-cover.jpg)](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)
++
++▶️ **[Écouter « cyber » — lecture directe dans le navigateur](https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3)**
++— instrumental synthwave, **2 min 06** : un clic et le morceau démarre tout seul dans le lecteur
++audio de votre navigateur, sans rien installer. *(MP3 192 kbps, 3 Mo — ou cliquez sur la pochette.)*
++
++- 💿 **La même prise en WAV sans perte** (24 Mo, 48 kHz / 16 bits stéréo) :
++  [2026-09-19_135052_cyber.wav](https://github.com/Tivaphe/YuEStudio/raw/main/docs/exemples/2026-09-19_135052_cyber.wav)
++  (téléchargement) — les fichiers sont versionnés dans [`docs/exemples/`](docs/exemples).
++- ℹ️ Le lecteur en ligne passe par **jsDelivr** : GitHub sert ses fichiers bruts avec un en-tête
++  `Content-Disposition: attachment`, qui force le téléchargement au lieu de la lecture. Les liens
++  du type `raw.githubusercontent.com` ouvrent donc une fenêtre « Enregistrer sous… », pas l'audio.
+ - La recette exacte, pour la rejouer chez vous :
+   - **Style** : `Synthwave années 80, basse, nappes, rythme entraînant, chill`
+   - **Paroles** : `[instrumental]` — aucune ligne de texte, donc aucune voix : le modèle ne joue
+     que les instruments.
+ 
++<details>
++<summary>🛠️ Pourquoi pas un lecteur « comme sur Hugging Face », directement dans ce README ?</summary>
++
++<br>
++
++Sur Hugging Face, la carte du modèle affiche le morceau avec un vrai lecteur, parce que la
++plateforme laisse passer le HTML :
++
++```html
++<audio controls preload="none" aria-label="Cyber Metal" src="…/cyber-metal.mp3"></audio>
++```
++
++**GitHub, lui, supprime ces balises.** Test à l'appui : envoyée à l'API de rendu Markdown de
++GitHub (`POST /markdown`), la balise `<audio …>` **disparaît** du HTML produit — comme `<video>`
++et `<iframe>` — il ne reste qu'un paragraphe vide. Aucun lecteur maison ne peut donc s'afficher
++dans un README, quel que soit le format du fichier (WAV, MP3, OGG…).
++
++**Le seul lecteur que GitHub accepte, c'est le sien** : il suffit de coller une URL d'asset
++GitHub **seule sur sa ligne**, et GitHub la transforme en lecteur intégré avec le son.
++
++    https://github.com/user-attachments/assets/<identifiant>
++
++Ces URL ne se fabriquent pas à la main : elles sont créées par un **glisser-déposer du fichier
++dans l'éditeur web** de GitHub (README, issue ou commentaire), une fois connecté.
++
++Autres pistes testées, toutes sans effet : URL brute du `.mp4` collée seule → GitHub affiche un
++simple lien ; syntaxe image `![…](…mp4)` → image cassée ; `<video controls>` → supprimée du rendu
++comme `<audio>`.
++
++Le fichier prêt à déposer est fourni :
++[`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
++**6 Mo** : pochette + forme d'onde du morceau, avec un curseur de progression, et le son AAC.
++Ouvrez-le, c'est exactement ce que verront vos visiteurs. Marche à suivre, une seule fois, depuis
++le compte propriétaire du dépôt :
++
++1. ouvrir ce README dans l'**éditeur web** GitHub (bouton crayon ✏️) ;
++2. **glisser** `docs/exemples/cyber-readme-player.mp4` dans la zone de texte ;
++3. GitHub insère une ligne `https://github.com/user-attachments/assets/…` : la laisser **seule
++   sur sa ligne**, à l'endroit voulu dans la section ;
++4. enregistrer : le lecteur s'affiche dans la page du projet, avec les contrôles et le son.
++
++C'est aussi la méthode officielle pour les vidéos de démonstration : rien à héberger ailleurs.
++
++</details>
++
+ ---
+ 
+ ## ✨ Pourquoi YueStudio
+@@ -222,7 +276,9 @@ et extinction du PC (`SetConsoleCtrlHandler`), plus `SIGTERM`/`SIGHUP` et un `at
+ Deux filets supplémentaires :
+ 
+ - **onglet du navigateur fermé** → un beacon `POST /api/bye` libère la VRAM tout en gardant le moteur
+-  chaud (rechargement immédiat si vous revenez) ;
++  chaud (rechargement immédiat si vous revenez). Le déchargement est **différé de 5 secondes** et
++  annulé si la page revient : un simple **F5** ne coûte donc plus les 30 à 60 s de rechargement du
++  modèle, et rien n'est déchargé tant qu'une génération tourne ;
+ - **30 minutes d'inactivité** → le moteur décharge le modèle de lui-même (`idle_unload_ms`).
+ 
+ `3-ARRETER.bat` reste fourni comme **script de secours** (fenêtre fermée brutalement, processus orphelin).
+@@ -283,7 +339,7 @@ YueStudio/
+ ├─ PROMPT-LLM.md          le prompt à donner à un LLM pour écrire vos paroles
+ ├─ README.txt           version texte brut, sans mise en forme
+ ├─ docs/screenshots/    captures d'écran des README
+-├─ docs/exemples/       morceau exemple « cyber » (WAV à déposer)
++├─ docs/exemples/       morceau exemple « cyber » (écoute MP3, WAV, pochette, MP4 lecteur)
+ │
+ ├─ engine/                créé à l'installation : binaires audio.cpp + journaux
+ ├─ models/Yue2-3B-GGUF/   créé à l'installation : poids GGUF (~3 à 13 Go)
+@@ -308,11 +364,24 @@ Le code applicatif tient dans **5 fichiers** : `server.py` (≈ 1 150 lignes), `
+ | GET | `/api/pending`, `/api/pending/<id>` | files et travaux en cours |
+ | POST | `/api/update` | notes / métadonnées d'une entrée |
+ | POST | `/api/import`, GET `/api/export` | import / export JSON de l'historique |
+-| POST | `/api/unload` | décharge le modèle (libère la VRAM) |
+-| POST | `/api/bye` | beacon de fermeture d'onglet |
++| POST | `/api/unload` | décharge le modèle (libère la VRAM ; refusé `409` pendant une génération) |
++| POST | `/api/bye` | beacon de fermeture d'onglet (déchargement différé, voir plus haut) |
+ | DELETE | `/api/history/<id>` | supprime une entrée et son WAV |
+ | GET | `/audio/<fichier>` | lecture / téléchargement (gère `Range`) |
+ 
++Pour scripter l'API depuis un terminal, envoyez **`Content-Type: application/json`** :
++
++```bash
++curl -X POST http://127.0.0.1:8090/api/generate \
++     -H "Content-Type: application/json" \
++     -d '{"title":"Test","lyrics":"[instrumental]","style":"synthwave"}'
++```
++
++Tout autre type est refusé (`403`) : c'est ce qui empêche une page web ouverte dans le même
++navigateur de piloter l'application à votre insu (lancement de générations, import d'entrées,
++déchargement du modèle). S'y ajoutent le contrôle de l'en-tête `Host` (contre le *DNS rebinding*)
++et le refus explicite de `Sec-Fetch-Site: cross-site` / d'une origine non locale.
++
+ Le moteur audio.cpp est piloté via son API officielle :
+ `POST /v1/tasks/run`, `POST /v1/tasks/unload_all_models`, `GET /health`, `GET /v1/models`.
+ 
+@@ -345,11 +414,10 @@ utilisables en un clic sur un PC grand public.
+ 
+ ## 🗺️ Idées d'évolution
+ 
+-- [ ] Capture d'écran et démo audio dans ce README
+-- [ ] Génération en file d'attente côté interface (plusieurs morceaux d'affilée)
+-- [ ] Édition de la partition ABC avec re-synthèse
+-- [ ] Import d'un audio de référence (workflow *cover* de YuE2 : `cot = melody`)
+-- [ ] Version anglaise de l'interface
++- [ ] Import d'un audio de référence (workflow *cover* de YuE2 : `cot = melody`) — la moitié ABC
++  fonctionne déjà (éditer ou coller une partition, `cot = melody`) ; la moitié audio attend
++  qu'audio.cpp livre SheetSage2 (audio → partition) dans une version stable
++- [ ] Traduction anglaise complète des guides (`LISEZ-MOI.md`, `GUIDE-PAROLES.md`)
+ - [ ] Paquet macOS / Linux (audio.cpp existe déjà pour ces plateformes)
+ 
+ Les contributions sont bienvenues : ouvrez une issue ou une pull request.
+diff --git a/app/app.js b/app/app.js
+index 228f14f..fbac219 100644
+--- a/app/app.js
++++ b/app/app.js
+@@ -1205,7 +1205,9 @@ function initUnloadOnClose() {
+     if (event.persisted) return;            // simple mise en cache, on reste
+     try {
+       if (navigator.sendBeacon) {
+-        navigator.sendBeacon('/api/bye', new Blob([], { type: 'text/plain' }));
++        // application/json et non text/plain : le serveur n'accepte plus que ce
++        // type (un site tiers ne peut pas l'envoyer sans preflight CORS).
++        navigator.sendBeacon('/api/bye', new Blob(['{}'], { type: 'application/json' }));
+       }
+     } catch (e) { /* jamais bloquant */ }
+   });
+@@ -1364,7 +1366,12 @@ function initUi() {
+   });
+ 
+   window.addEventListener('beforeunload', (ev) => {
+-    if (STATE.job) {
++    // On avertit aussi quand la file d'attente n'est pas vide : elle vit en
++    // memoire du navigateur, un rechargement la perdrait.
++    const busy = STATE.job
++      || QUEUE.running
++      || QUEUE.items.some((item) => item.status === 'pending');
++    if (busy) {
+       ev.preventDefault();
+       ev.returnValue = '';
+     }
+diff --git a/app/server.py b/app/server.py
+index 9fd15b5..c680698 100644
+--- a/app/server.py
++++ b/app/server.py
+@@ -98,6 +98,20 @@ HISTORY_LOCK = threading.Lock()
+ JOBS_LOCK = threading.Lock()
+ JOBS: dict = {}  # id -> {status, entry, error, started_at}
+ 
++# --- Garde-fous des requetes POST ------------------------------------------
++# 1) Content-Type : un site tiers ne peut PAS envoyer application/json sans
++#    preflight CORS ; en mode « no-cors » le navigateur n'autorise que
++#    text/plain, application/x-www-form-urlencoded ou multipart/form-data.
++# 2) Host : bloque le DNS rebinding (un domaine pirate qui resout vers
++#    127.0.0.1 se presente avec son propre nom dans l'en-tete Host).
++# 3) Origin / Sec-Fetch-Site : refusent explicitement l'origine croisee.
++ALLOWED_POST_TYPE = "application/json"
++UNLOAD_GRACE = 5.0          # secondes : un F5 (ou un retour) annule le dechargement
++_LOCAL_NAMES: set = set()   # noms d'hote autorises, calcules selon --host
++_LAST_ACTIVITY = 0.0        # horodatage de la derniere requete de l'interface
++_UNLOAD_TIMER = None
++_UNLOAD_LOCK = threading.Lock()
++
+ 
+ def log(message: str) -> None:
+     try:
+@@ -669,9 +683,63 @@ class Handler(BaseHTTPRequestHandler):
+     def log_message(self, fmt, *args) -> None:  # silence le journal HTTP
+         pass
+ 
++    # --- anti-CSRF ---------------------------------------------------------
++    def _host_name(self) -> str:
++        """Nom d'hote de l'en-tete Host, sans le port."""
++        raw = (self.headers.get("Host") or "").strip()
++        if not raw:
++            return ""
++        try:
++            return (urllib.parse.urlsplit("//" + raw).hostname or "").lower()
++        except ValueError:
++            return ""
++
++    @staticmethod
++    def _origin_name(value: str) -> str:
++        try:
++            return (urllib.parse.urlsplit(value).hostname or "").lower()
++        except ValueError:
++            return ""
++
++    def _post_allowed(self) -> tuple:
++        """Un POST doit venir de l'interface locale elle-meme.
++
++        Trois barrieres, dans l'ordre ou elles se declenchent :
++          - Sec-Fetch-Site / Origin : refus explicite d'une page tierce ;
++          - Host : refus du DNS rebinding ;
++          - Content-Type: application/json : un site tiers ne peut pas l'envoyer
++            sans preflight CORS (en mode « no-cors » le navigateur n'accepte que
++            text/plain, x-www-form-urlencoded ou multipart/form-data).
++        """
++        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
++        if site == "cross-site":
++            return False, "Requete refusee : origine croisee (Sec-Fetch-Site)."
++
++        origin = (self.headers.get("Origin") or "").strip()
++        if origin:
++            if origin.lower() == "null":
++                return False, "Requete refusee : origine opaque."
++            o_name = self._origin_name(origin)
++            if _LOCAL_NAMES:
++                if o_name not in _LOCAL_NAMES:
++                    return False, "Requete refusee : origine non locale."
++            elif o_name != self._host_name():
++                return False, "Requete refusee : origine differente de l'hote."
++
++        if _LOCAL_NAMES:
++            host = self._host_name()
++            if host and host not in _LOCAL_NAMES:
++                return False, "Requete refusee : en-tete Host inattendu."
++
++        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
++        if ctype != ALLOWED_POST_TYPE:
++            return False, "Requete refusee : Content-Type « application/json » attendu."
++        return True, ""
++
+     # --- routes ------------------------------------------------------------
+     def do_GET(self):  # noqa: N802
+         path = self.path.split("?", 1)[0]
++        touch_activity()
+ 
+         if path in ("/", "/index.html"):
+             self._serve_file(APP_DIR / "index.html", "text/html; charset=utf-8")
+@@ -730,6 +798,13 @@ class Handler(BaseHTTPRequestHandler):
+ 
+     def do_POST(self):  # noqa: N802
+         path = self.path.split("?", 1)[0]
++        if path != "/api/bye":
++            touch_activity()          # le beacon de fermeture ne repousse pas le timer
++        allowed, reason = self._post_allowed()
++        if not allowed:
++            log(f"[!] {reason} (POST {path})")
++            self._json(403, {"error": {"message": reason}})
++            return
+         body = self._read_body()
+ 
+         if path == "/api/generate":
+@@ -778,6 +853,16 @@ class Handler(BaseHTTPRequestHandler):
+             ok = open_in_file_manager(ROOT)
+             self._json(200, {"ok": ok, "path": str(ROOT)})
+         elif path == "/api/unload":
++            if has_running_job():
++                self._json(
++                    409,
++                    {
++                        "ok": False,
++                        "message": "Une generation est en cours : attendez la fin "
++                        "avant de decharger le modele.",
++                    },
++                )
++                return
+             ok = unload_engine_model(timeout=60)
+             self._json(
+                 200,
+@@ -791,8 +876,10 @@ class Handler(BaseHTTPRequestHandler):
+         elif path == "/api/bye":
+             # Beacon envoye quand l'onglet du navigateur est ferme : on libere la
+             # VRAM sans couper le moteur (il rechargera le modele a la demande).
+-            ok = unload_engine_model(timeout=5)
+-            self._json(200, {"ok": ok})
++            # Deux garde-fous : rien n'est fait pendant une generation, et le
++            # dechargement est annule si la page revient (simple F5).
++            started, skipped = unload_after_leave()
++            self._json(200, {"ok": started, "deferred": started, "skipped": skipped})
+         else:
+             self._json(404, {"error": {"message": f"Route inconnue : {path}"}})
+ 
+@@ -835,7 +922,7 @@ class Handler(BaseHTTPRequestHandler):
+         if not safe or not file_path.exists() or not file_path.is_file():
+             self._json(404, {"error": {"message": "Fichier audio introuvable."}})
+             return
+-        data = file_path.read_bytes()
++        size = file_path.stat().st_size
+         extra = {
+             "Accept-Ranges": "bytes",
+             "Content-Disposition": f'inline; filename="{safe.encode("ascii", "ignore").decode() or "song.wav"}"',
+@@ -843,24 +930,40 @@ class Handler(BaseHTTPRequestHandler):
+         rng = self.headers.get("Range")
+         if rng:
+             match = re.match(r"bytes=(\d*)-(\d*)", rng)
+-            if match:
+-                start = int(match.group(1) or 0)
+-                end = int(match.group(2) or (len(data) - 1))
+-                end = min(end, len(data) - 1)
+-                if start <= end:
+-                    chunk = data[start : end + 1]
+-                    self.send_response(206)
+-                    self.send_header("Content-Type", "audio/wav")
+-                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+-                    self.send_header("Accept-Ranges", "bytes")
+-                    self.send_header("Content-Length", str(len(chunk)))
++            if match and (match.group(1) or match.group(2)) and size > 0:
++                if match.group(1):
++                    start = int(match.group(1))
++                    end = int(match.group(2)) if match.group(2) else size - 1
++                else:
++                    # plage suffixe : « bytes=-500 » = les 500 derniers octets
++                    start = max(0, size - int(match.group(2)))
++                    end = size - 1
++                if start >= size or start > end:
++                    # plage hors bornes : 416 comme le demande la RFC 9110
++                    self.send_response(416)
++                    self.send_header("Content-Range", f"bytes */{size}")
++                    self.send_header("Content-Length", "0")
+                     self.end_headers()
+-                    try:
+-                        self.wfile.write(chunk)
+-                    except Exception:
+-                        pass
+                     return
+-        self._send(200, data, "audio/wav", extra)
++                end = min(end, size - 1)
++                length = end - start + 1
++                # On ne lit QUE la plage demandee : un seek dans un WAV de
++                # 55 Mo ne doit pas relire les 55 Mo a chaque deplacement.
++                with file_path.open("rb") as handle:
++                    handle.seek(start)
++                    chunk = handle.read(length)
++                self.send_response(206)
++                self.send_header("Content-Type", "audio/wav")
++                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
++                self.send_header("Accept-Ranges", "bytes")
++                self.send_header("Content-Length", str(len(chunk)))
++                self.end_headers()
++                try:
++                    self.wfile.write(chunk)
++                except Exception:
++                    pass
++                return
++        self._send(200, file_path.read_bytes(), "audio/wav", extra)
+ 
+     def _state(self) -> None:
+         ready = ENGINE.exe is not None and engine_ready(ENGINE.port)
+@@ -978,6 +1081,70 @@ def unload_engine_model(timeout: float = 8.0) -> bool:
+         return False
+ 
+ 
++def local_host_names(host: str) -> set:
++    """Noms d'hote acceptes dans l'en-tete Host et dans Origin.
++
++    Ecoute sur une adresse locale : seuls les noms de boucle locale sont valides.
++    Ecoute sur une adresse explicite : ce nom uniquement. Ecoute sur toutes les
++    interfaces (0.0.0.0) : ensemble vide, donc controle desactive (on se rabat
++    alors sur la comparaison Origin == Host, qui reste une verification
++    same-origin).
++    """
++    host = (host or "").strip().lower()
++    if host in ("", "0.0.0.0", "::", "[::]"):
++        return set()
++    if host in ("localhost", "127.0.0.1", "::1", "[::1]") or host.startswith("127."):
++        return {"localhost", "127.0.0.1", "::1"}
++    return {host}
++
++
++def touch_activity() -> None:
++    """Note qu'une page de l'interface vient de parler au serveur."""
++    global _LAST_ACTIVITY
++    _LAST_ACTIVITY = time.monotonic()
++
++
++def has_running_job() -> bool:
++    """Vrai si une generation est en cours (elle serait tuee par un dechargement)."""
++    with JOBS_LOCK:
++        return any(job.get("status") == "running" for job in JOBS.values())
++
++
++def unload_after_leave() -> tuple:
++    """Fermeture de l'onglet : decharge le modele apres un delai de grace.
++
++    Le delai distingue une vraie fermeture d'un simple F5 : quand la page se
++    recharge, elle rappelle aussitot /api/state et /api/history, ce qui repousse
++    le dechargement (et evite de perdre 30 a 60 s au lancement suivant).
++    Aucun dechargement n'a lieu tant qu'une generation tourne.
++    """
++    global _UNLOAD_TIMER
++    if has_running_job():
++        return False, "job_en_cours"
++    with _UNLOAD_LOCK:
++        if _UNLOAD_TIMER is not None:
++            _UNLOAD_TIMER.cancel()
++        left_at = _LAST_ACTIVITY   # instant ou l'onglet a signale sa fermeture
++
++        def later() -> None:
++            global _UNLOAD_TIMER
++            with _UNLOAD_LOCK:
++                _UNLOAD_TIMER = None
++            # Toute requete venue APRES le beacon = la page est revenue (F5,
++            # retour arriere, nouvel onglet) : on garde le modele en memoire.
++            if _LAST_ACTIVITY > left_at:
++                log("[i] Onglet recharge : modele conserve en memoire.")
++                return
++            if unload_engine_model(timeout=5):
++                log("[i] Onglet ferme : modele decharge, VRAM liberee.")
++
++        timer = threading.Timer(UNLOAD_GRACE, later)
++        timer.daemon = True
++        _UNLOAD_TIMER = timer
++        timer.start()
++    return True, ""
++
++
+ def cleanup() -> None:
+     """Arret complet, idempotent : utilisable depuis plusieurs gestionnaires."""
+     if _SHUTDOWN_DONE.is_set():
+@@ -1137,8 +1304,9 @@ def main() -> int:
+     else:
+         log("[i] Mode --no-engine : moteur non demarre.")
+ 
+-    global HOST
++    global HOST, _LOCAL_NAMES
+     HOST = args.host
++    _LOCAL_NAMES = local_host_names(HOST)   # noms d'hote autorises pour les POST
+     port = args.port
+     if not port_is_free(port):
+         port = next((p for p in range(port + 1, port + 40) if port_is_free(p)), port)
+diff --git a/docs/exemples/2026-09-19_135052_cyber.mp3 b/docs/exemples/2026-09-19_135052_cyber.mp3
+new file mode 100644
+index 0000000..b8231d6
+Binary files /dev/null and b/docs/exemples/2026-09-19_135052_cyber.mp3 differ
+diff --git a/docs/exemples/LISEZ-MOI.txt b/docs/exemples/LISEZ-MOI.txt
+index 9562868..2bc5623 100644
+--- a/docs/exemples/LISEZ-MOI.txt
++++ b/docs/exemples/LISEZ-MOI.txt
+@@ -1,9 +1,64 @@
+-Déposez ici le fichier WAV d'exemple référencé par les README :
++Fichiers de l'exemple audio « cyber » (instrumental synthwave, généré en local par YueStudio — YuE2-3B) :
+ 
+-    2026-09-19_135052_cyber.wav
++    2026-09-19_135052_cyber.wav              24 Mo  original sans perte (48 kHz / 16 bits stéréo, 2 min 06)
++    2026-09-19_135052_cyber.mp3               3 Mo  écoute en ligne (192 kbps) — le lien des README
++    cyber-cover.jpg                         160 Ko  pochette affichée dans les README (cliquable)
++    cyber-readme-player.mp4                   6 Mo  vidéo 1280×720 (pochette + forme d'onde + curseur),
++                                                     à glisser dans l'éditeur GitHub pour obtenir un vrai
++                                                     lecteur intégré dans le README
+ 
+-(morceau « cyber », instrumental synthwave généré en local par YueStudio).
+-Une fois le fichier copié, le lien « Écouter un exemple » des README fonctionne.
++Pourquoi un MP3 pour l'écoute en ligne ? GitHub sert ses fichiers bruts avec l'en-tête
++« Content-Disposition: attachment » : un lien « raw.githubusercontent.com » force donc le
++téléchargement au lieu de la lecture. Le bouton « Écouter » des README passe donc par jsDelivr,
++qui sert le même fichier du dépôt avec le bon type MIME (audio/mpeg) et sans cet en-tête :
+ 
+-Place here the example WAV file referenced by the readmes:
+-2026-09-19_135052_cyber.wav ("cyber", a synthwave instrumental generated locally by YueStudio).
++    https://cdn.jsdelivr.net/gh/Tivaphe/YuEStudio@main/docs/exemples/2026-09-19_135052_cyber.mp3
++
++Pourquoi un MP4 « lecteur » ? GitHub supprime les balises <audio> et <video> du Markdown (elles
++n'apparaissent pas dans le HTML rendu). Le seul lecteur qu'il affiche est le sien, obtenu en
++collant seul sur sa ligne une URL d'asset GitHub — URL que l'on ne peut obtenir qu'en glissant
++le fichier dans l'éditeur web de GitHub (README, issue ou commentaire). Le MP4 est prêt pour ça.
++
++Commandes de régénération :
++
++    ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
++    ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
++           -filter_complex "[0:v]scale=1280:-2,crop=1280:640:0:12,setsar=1[top];\
++               [1:a]showwavespic=s=1280x80:colors=0x2ee6ff|0xff2ea0[w];[top][w]vstack=inputs=2[base];\
++               [base]drawbox=x='min(1276,t*1280/126.02)':y=640:w=3:h=80:color=0xf5f7ff@0.9:t=fill[out]" \
++           -map "[out]" -map 1:a -c:v libx264 -preset slow -crf 24 -tune stillimage \
++           -pix_fmt yuv420p -r 6 -g 60 -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 126.02 \
++           cyber-readme-player.mp4
++
++--- English ---
++
++Files for the "cyber" audio sample ("cyber", a synthwave instrumental generated locally by
++YueStudio — YuE2-3B):
++
++    2026-09-19_135052_cyber.wav              24 MB  lossless original (48 kHz / 16-bit stereo, 2 min 06)
++    2026-09-19_135052_cyber.mp3               3 MB  online listening (192 kbps) — the link used by the readmes
++    cyber-cover.jpg                         160 KB  cover art shown in the readmes (clickable)
++    cyber-readme-player.mp4                   6 MB  1280x720 video (cover art + waveform + cursor),
++                                                     to drag into GitHub's editor to get a real embedded
++                                                     player inside the README
++
++Why an MP3 for online listening? GitHub serves its raw files with a "Content-Disposition:
++attachment" header, so a "raw.githubusercontent.com" link forces a download instead of playback.
++The readmes' "Listen" link therefore goes through jsDelivr, which serves the same in-repo file
++with the proper MIME type (audio/mpeg) and without that header.
++
++Why a "player" MP4? GitHub strips <audio> and <video> tags from Markdown (they never appear in
++the rendered HTML). The only player it renders is its own, obtained by pasting a GitHub asset URL
++alone on its line — a URL you can only get by dragging the file into GitHub's web editor (README,
++issue or comment). The MP4 is ready for that.
++
++Rebuild commands:
++
++    ffmpeg -i 2026-09-19_135052_cyber.wav -c:a libmp3lame -b:a 192k 2026-09-19_135052_cyber.mp3
++    ffmpeg -loop 1 -i cyber-cover.jpg -i 2026-09-19_135052_cyber.wav \
++           -filter_complex "[0:v]scale=1280:-2,crop=1280:640:0:12,setsar=1[top];\
++               [1:a]showwavespic=s=1280x80:colors=0x2ee6ff|0xff2ea0[w];[top][w]vstack=inputs=2[base];\
++               [base]drawbox=x='min(1276,t*1280/126.02)':y=640:w=3:h=80:color=0xf5f7ff@0.9:t=fill[out]" \
++           -map "[out]" -map 1:a -c:v libx264 -preset slow -crf 24 -tune stillimage \
++           -pix_fmt yuv420p -r 6 -g 60 -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 126.02 \
++           cyber-readme-player.mp4
+diff --git a/docs/exemples/cyber-cover.jpg b/docs/exemples/cyber-cover.jpg
+new file mode 100644
+index 0000000..b4cb4cc
+Binary files /dev/null and b/docs/exemples/cyber-cover.jpg differ
+diff --git a/docs/exemples/cyber-readme-player.mp4 b/docs/exemples/cyber-readme-player.mp4
+new file mode 100644
+index 0000000..0e989fd
+Binary files /dev/null and b/docs/exemples/cyber-readme-player.mp4 differ
