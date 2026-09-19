@@ -1,0 +1,47 @@
+MIT License
+
+Copyright (c) 2026 YueStudio contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+----------------------------------------------------------------------------
+
+IMPORTANT — SCOPE OF THIS LICENSE / PORTÉE DE CETTE LICENCE
+
+This MIT license covers ONLY the YueStudio source code and documentation in
+this repository: app/ (server.py, index.html, app.js, style.css, favicon.svg),
+the *.bat launchers, installer.ps1, and the *.md / *.txt documents.
+
+It does NOT cover the third-party components that the installer downloads at
+runtime, which keep their own licenses:
+
+  * YuE2-3B model weights (m-a-p)  -> CC BY-NC 4.0, NON-COMMERCIAL USE ONLY
+  * audio.cpp binaries (ggml)      -> MIT
+
+As a consequence, songs generated with the official YuE2 weights are subject to
+the CC BY-NC 4.0 terms of those weights: personal, non-commercial use. Check the
+upstream license before any commercial use.
+
+----------------------------------------------------------------------------
+
+Cette licence MIT ne couvre QUE le code source et la documentation de YueStudio
+présents dans ce dépôt. Elle ne couvre pas les composants tiers téléchargés par
+l'installeur : les poids YuE2-3B (m-a-p) sont sous CC BY-NC 4.0 — usage non
+commercial uniquement — et les binaires audio.cpp sous MIT. Les morceaux générés
+avec les poids officiels relèvent donc d'un usage non commercial.
