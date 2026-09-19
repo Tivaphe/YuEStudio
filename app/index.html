@@ -217,6 +217,18 @@ Les néons s'allument sur le boulevard
             </div>
             <details id="result-score-wrap" class="score-wrap hidden">
               <summary>🎼 Partition ABC composée par le modèle</summary>
+              <div class="score-player-panel" id="result-player-panel">
+                <div class="score-player-bar">
+                  <button type="button" class="btn btn-mini btn-score-play" id="result-btn-score-play">▶️ Écouter au synthé</button>
+                  <button type="button" class="btn btn-mini btn-score-stop" id="result-btn-score-stop" disabled>⏹ Stop</button>
+                  <span class="score-play-time" id="result-score-play-time">0:00 / 0:00</span>
+                  <div class="score-legend">
+                    <span class="legend-dot dot-vocal"></span> Voix
+                    <span class="legend-dot dot-ins"></span> Instruments
+                  </div>
+                </div>
+                <div class="pianoroll-wrap" id="result-pianoroll-wrap"></div>
+              </div>
               <pre id="result-score" class="score"></pre>
               <button type="button" class="btn btn-ghost btn-small" id="result-copy-score">📋 Copier la partition</button>
             </details>
@@ -350,13 +362,49 @@ Les néons s'allument sur le boulevard
     </div>
 
     <details class="hblock h-score hidden">
-      <summary>🎼 Partition ABC</summary>
+      <summary>🎼 Partition ABC & Piano Roll</summary>
+      
+      <div class="score-player-panel">
+        <div class="score-player-bar">
+          <button type="button" class="btn btn-mini btn-score-play">▶️ Écouter au synthé</button>
+          <button type="button" class="btn btn-mini btn-score-stop" disabled>⏹ Stop</button>
+          <span class="score-play-time">0:00 / 0:00</span>
+          <div class="score-legend">
+            <span class="legend-dot dot-vocal"></span> Voix
+            <span class="legend-dot dot-ins"></span> Inst.
+          </div>
+        </div>
+        <div class="pianoroll-wrap"></div>
+      </div>
+
       <pre class="htext h-score-text"></pre>
       <div class="score-actions">
         <button type="button" class="btn btn-mini copy-score">📋 Copier la partition</button>
-        <button type="button" class="btn btn-mini h-score-edit-open">✏️ Éditer la partition</button>
+        <button type="button" class="btn btn-mini h-score-edit-open">✏️ Éditer & Adapter</button>
       </div>
       <div class="score-edit hidden">
+        <!-- Barre d'outils simplifiée pour humains (tempo, tonalité, accords) -->
+        <div class="score-quick-tools">
+          <span class="hint-strong">⚡ Outils rapides :</span>
+          <label class="quick-tool-item">
+            <span>Tempo :</span>
+            <input type="number" class="h-score-bpm" min="40" max="240" step="5" placeholder="BPM">
+            <button type="button" class="btn btn-mini h-apply-bpm">Appliquer</button>
+          </label>
+          <label class="quick-tool-item">
+            <span>Tonalité :</span>
+            <input type="text" class="h-score-key" size="4" placeholder="Am, C...">
+            <button type="button" class="btn btn-mini h-apply-key">Appliquer</button>
+          </label>
+          <label class="quick-tool-item">
+            <span>Remplacer accord :</span>
+            <input type="text" class="h-score-old-chord" size="4" placeholder="ex: Am">
+            <span>➔</span>
+            <input type="text" class="h-score-new-chord" size="4" placeholder="ex: Em">
+            <button type="button" class="btn btn-mini h-apply-chord">Remplacer</button>
+          </label>
+        </div>
+
         <textarea class="h-score-edit" rows="10" spellcheck="false"></textarea>
         <div class="score-edit-actions">
           <label class="hint score-cot-label">Suivre :
@@ -604,6 +652,7 @@ Answer only with the requested blocks, nothing else.
 </script>
 
 <script src="/i18n.js"></script>
+<script src="/synth.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
