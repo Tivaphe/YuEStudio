@@ -81,10 +81,15 @@ GitHub **seule sur sa ligne**, et GitHub la transforme en lecteur intégré avec
 Ces URL ne se fabriquent pas à la main : elles sont créées par un **glisser-déposer du fichier
 dans l'éditeur web** de GitHub (README, issue ou commentaire), une fois connecté.
 
+Autres pistes testées, toutes sans effet : URL brute du `.mp4` collée seule → GitHub affiche un
+simple lien ; syntaxe image `![…](…mp4)` → image cassée ; `<video controls>` → supprimée du rendu
+comme `<audio>`.
+
 Le fichier prêt à déposer est fourni :
 [`cyber-readme-player.mp4`](docs/exemples/cyber-readme-player.mp4) — **2 min 06**, 1280×720,
-pochette + audio AAC, 3 Mo (l'image fixe affiche la pochette, le lecteur a le son). Marche à
-suivre, une seule fois, depuis le compte propriétaire du dépôt :
+**6 Mo** : pochette + forme d'onde du morceau, avec un curseur de progression, et le son AAC.
+Ouvrez-le, c'est exactement ce que verront vos visiteurs. Marche à suivre, une seule fois, depuis
+le compte propriétaire du dépôt :
 
 1. ouvrir ce README dans l'**éditeur web** GitHub (bouton crayon ✏️) ;
 2. **glisser** `docs/exemples/cyber-readme-player.mp4` dans la zone de texte ;
