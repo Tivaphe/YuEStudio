@@ -141,6 +141,29 @@ const EN = {
   'Le prompt sera complété avec votre style et votre sujet.': 'The prompt will be filled in with your style and subject.',
   '👁 Voir / copier tout le prompt': '👁 View / copy the whole prompt',
 
+  /* ---- parolier local ---- */
+  '✨ Parolier local': '✨ Local lyricist',
+  '100 % hors ligne': '100% offline',
+  'Le petit modèle abliterated écrit le titre, le style et les paroles directement ici, sans passer par ChatGPT. Un clic remplit le formulaire.':
+    'The small abliterated model writes the title, style and lyrics right here, with no need for ChatGPT. One click fills in the form.',
+  '✨ Écrire les paroles': '✨ Write the lyrics',
+  '⬆ Utiliser': '⬆ Use it',
+  'Non installé — une seule fois, dans PowerShell :': 'Not installed — once, in PowerShell:',
+  'Prêt ({model}).': 'Ready ({model}).',
+  'Installé ({model}) — démarre à la première génération (~20 s).':
+    'Installed ({model}) — starts on first use (~20 s).',
+  'Écriture en cours… (30 à 60 s la première fois, chargement du modèle inclus)':
+    'Writing… (30 to 60 s the first time, model loading included)',
+  'Écrit en {dur} avec {model} (graine {seed}).': 'Written in {dur} with {model} (seed {seed}).',
+  'Parolier 9B - recommandé (2026)': 'Lyricist 9B — recommended (2026)',
+  'Parolier 12B Heretic - créativité max (2026)': 'Lyricist 12B Heretic — max creativity (2026)',
+  'Parolier 8B - valeur sûre (2025)': 'Lyricist 8B — proven (2025)',
+  'Parolier 4B - léger (GPU 8 Go)': 'Lyricist 4B — light (8 GB GPU)',
+  'Paroles du parolier copiées dans le formulaire : relisez, ajustez, puis 🎵 Générer.':
+    'Lyricist output copied into the form: proofread, tweak, then hit 🎵 Generate.',
+  'Le parolier a répondu hors format : texte brut affiché, copiez les bons passages.':
+    'The lyricist answered off-format: raw text shown, copy the right parts.',
+
   /* ---- conseils ---- */
   'Conseils': 'Tips',
   'Le style fonctionne par': 'The style works as',

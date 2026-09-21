@@ -1,4 +1,4 @@
-﻿# 🚀 Premiers pas avec YueStudio (2 minutes)
+# 🚀 Premiers pas avec YueStudio (2 minutes)
 
 ## 1. Installez Python (une seule fois)
 
@@ -49,9 +49,12 @@ automatiquement. `3-ARRETER.bat` ne sert qu'en cas de blocage.
 ## 🤖 Vous n'avez pas de paroles ?
 
 Dans la colonne de droite, carte **« Préparer avec une IA »** :
-décrivez le **style** et le **sujet** en une phrase → **📋 Copier le prompt** →
-collez dans ChatGPT / Claude / Gemini → recopiez les blocs `STYLE` et `PAROLES` renvoyés.
-Détails et exemples : `PROMPT-LLM.md`.
+décrivez le **style** et le **sujet** en une phrase, puis au choix :
+
+- **✨ Écrire les paroles** : le parolier local (option `.\\installer.ps1 -AvecParolier`,
+  100 % hors ligne) écrit tout et **⬆ Utiliser** remplit le formulaire — voir `PAROLIER.md` ;
+- **📋 Copier le prompt** → collez dans ChatGPT / Claude / Gemini → recopiez les blocs
+  `STYLE` et `PAROLES` renvoyés — voir `PROMPT-LLM.md`.
 
 ## 🌗 Deux boutons en haut à droite
 
