@@ -23,9 +23,11 @@
    .\installer.ps1 -Backend cpu         force CPU (tres lent, depannage)
    .\installer.ps1 -ToutesQualites      telecharge Q4 + Q8 + BF16 (~14 Go)
    .\installer.ps1 -Qualite q4          telecharge uniquement la version Q4
-   .\installer.ps1 -AvecParolier        ajoute le parolier local (LLM, +~5 Go)
+   .\installer.ps1 -AvecParolier        ajoute le parolier local (LLM 9B, +~6 Go)
    .\installer.ps1 -AvecParolier -Parolier 4b
                                         parolier leger pour GPU 8 Go (+~2,5 Go)
+   .\installer.ps1 -AvecParolier -Parolier 12b
+                                        parolier creativite max (+~7,5 Go)
    .\installer.ps1 -Verifier            affiche un diagnostic, ne telecharge pas
 ================================================================================
 #>
@@ -41,8 +43,8 @@ param(
     [switch]$ToutesQualites,
     [switch]$AvecParolier,
 
-    [ValidateSet('8b', '4b', 'les-deux')]
-    [string]$Parolier = '8b',
+    [ValidateSet('9b', '12b', '8b', '4b')]
+    [string]$Parolier = '9b',
 
     [switch]$Verifier
 )
@@ -66,7 +68,7 @@ $HfBase    = 'https://huggingface.co/audio-cpp/Yue2-3B-GGUF/resolve/main'
 $HfApi     = 'https://huggingface.co/api/models/audio-cpp/Yue2-3B-GGUF/tree/main?recursive=true'
 
 # --- Parolier local (option -AvecParolier) ------------------------------------
-# Serveur llama.cpp officiel + petit LLM abliterated (Qwen3, GGUF Q4_K_M).
+# Serveur llama.cpp officiel + petit LLM abliterated/Heretic (GGUF Q4_K_M).
 # Tailles vérifiées via l'API Hugging Face (sept. 2026).
 $LlamaBuild = 'b10964'
 $LlamaBase  = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaBuild"
@@ -74,7 +76,15 @@ $LlmDir      = Join-Path $EngineDir 'llm'
 $ParolierDir = Join-Path $Root 'models\Parolier-GGUF'
 
 $ParolierModeles = @{
-    '8b' = @{ Nom = 'Parolier 8B (recommandé)'
+    '9b' = @{ Nom = 'Parolier 9B (recommandé, 2026)'
+              Repo = 'mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF'
+              Fichier = 'Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf'
+              Taille = 5627045248; Vram = '~6 Go' }
+    '12b' = @{ Nom = 'Parolier 12B Heretic (créativité max, 2026)'
+              Repo = 'igorls/gemma-4-12B-it-heretic-GGUF'
+              Fichier = 'gemma-4-12B-it-heretic-Q4_K_M.gguf'
+              Taille = 7381381760; Vram = '~8 Go' }
+    '8b' = @{ Nom = 'Parolier 8B (valeur sûre, 2025)'
               Repo = 'mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF'
               Fichier = 'Huihui-Qwen3-8B-abliterated-v2.Q4_K_M.gguf'
               Taille = 5027780352; Vram = '~6 Go' }
@@ -544,7 +554,7 @@ if (-not $AvecParolier) {
         Write-Ok 'Serveur LLM pret.'
     }
 
-    $voulus = if ($Parolier -eq 'les-deux') { @('8b', '4b') } else { @($Parolier) }
+    $voulus = @($Parolier)
     foreach ($m in $voulus) {
         $spec = $ParolierModeles[$m]
         $local = Join-Path $ParolierDir $spec.Fichier
@@ -571,7 +581,7 @@ Write-Host "  Moteur    : $EngineDir  (backend $chosen)"
 Write-Host "  Modele    : $ModelDir"
 foreach ($q in $wanted) { Write-Host ("  Qualite   : {0}  -  VRAM {1}" -f $Qualites[$q].Nom, $Qualites[$q].Vram) }
 if ($AvecParolier) {
-    $voulus = if ($Parolier -eq 'les-deux') { @('8b', '4b') } else { @($Parolier) }
+    $voulus = @($Parolier)
     foreach ($m in $voulus) { Write-Host ("  Parolier  : {0}  -  VRAM {1}" -f $ParolierModeles[$m].Nom, $ParolierModeles[$m].Vram) }
 } else {
     Write-Host '  Parolier  : non installe (option -AvecParolier, voir PAROLIER.md)'

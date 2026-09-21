@@ -251,7 +251,7 @@ plafond réel de 6 minutes).
 La carte **🤖 Préparer avec une IA** (colonne de droite) propose deux voies :
 
 - **✨ Parolier local** (recommandé, 100 % hors ligne) : un petit LLM abliterated
-  (Qwen3-8B, + ~5 Go en option) écrit le `TITRE`, le `STYLE` et les `PAROLES` directement
+  (Qwen3.5-9B, + ~6 Go en option) écrit le `TITRE`, le `STYLE` et les `PAROLES` directement
   dans YueStudio, d'un clic — voir [`PAROLIER.md`](PAROLIER.md) ;
 - **📋 Copier le prompt** : le même prompt (~5 300 caractères, au format exact de YuE2)
   à coller dans ChatGPT, Claude, Gemini ou Mistral, puis recopier les trois blocs —
@@ -419,8 +419,9 @@ usage commercial.
 - **[audio.cpp](https://github.com/0xShug0/audio.cpp)** — inférence locale performante (ggml), binaires Windows précompilés.
 - **[audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)** — poids convertis en GGUF.
 - **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — serveur du parolier local (optionnel), avec
-  [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
-  quantifié par [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF).
+  [Huihui-Qwen3.5-9B-abliterated](https://huggingface.co/huihui-ai/Huihui-Qwen3.5-9B-abliterated)
+  quantifié par [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF)
+  (ou [Gemma-4-12B Heretic](https://huggingface.co/igorls/gemma-4-12B-it-heretic-GGUF)).
 
 YueStudio n'est affilié à aucun de ces projets : c'est une interface d'assemblage qui les rend
 utilisables en un clic sur un PC grand public.

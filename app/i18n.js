@@ -155,7 +155,9 @@ const EN = {
   'Écriture en cours… (30 à 60 s la première fois, chargement du modèle inclus)':
     'Writing… (30 to 60 s the first time, model loading included)',
   'Écrit en {dur} avec {model} (graine {seed}).': 'Written in {dur} with {model} (seed {seed}).',
-  'Parolier 8B - recommandé': 'Lyricist 8B — recommended',
+  'Parolier 9B - recommandé (2026)': 'Lyricist 9B — recommended (2026)',
+  'Parolier 12B Heretic - créativité max (2026)': 'Lyricist 12B Heretic — max creativity (2026)',
+  'Parolier 8B - valeur sûre (2025)': 'Lyricist 8B — proven (2025)',
   'Parolier 4B - léger (GPU 8 Go)': 'Lyricist 4B — light (8 GB GPU)',
   'Paroles du parolier copiées dans le formulaire : relisez, ajustez, puis 🎵 Générer.':
     'Lyricist output copied into the form: proofread, tweak, then hit 🎵 Generate.',

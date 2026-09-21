@@ -237,8 +237,8 @@ Song duration **follows the length of the lyrics** (≈ 10 sung seconds per line
 
 The **🤖 Prepare with an AI** card (right column) offers two paths:
 
-- **✨ Local lyricist** (recommended, fully offline): a small abliterated LLM (Qwen3-8B,
-  optional + ~5 GB) writes the `TITLE`, `STYLE` and `LYRICS` right inside YueStudio, in one
+- **✨ Local lyricist** (recommended, fully offline): a small abliterated LLM (Qwen3.5-9B,
+  optional + ~6 GB) writes the `TITLE`, `STYLE` and `LYRICS` right inside YueStudio, in one
   click — see [`PAROLIER.md`](PAROLIER.md) (French);
 - **📋 Copy the prompt**: the same prompt in the exact format YuE2 expects, ready to paste
   into ChatGPT, Claude, Gemini or Mistral, then copy the three blocks back.
@@ -409,8 +409,9 @@ non-commercial use**. Check the upstream license before any commercial use.
 - **[audio.cpp](https://github.com/0xShug0/audio.cpp)** — fast local inference (ggml), prebuilt Windows binaries.
 - **[audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)** — weights converted to GGUF.
 - **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — local lyricist server (optional), with
-  [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
-  quantized by [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF).
+  [Huihui-Qwen3.5-9B-abliterated](https://huggingface.co/huihui-ai/Huihui-Qwen3.5-9B-abliterated)
+  quantized by [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF)
+  (or [Gemma-4-12B Heretic](https://huggingface.co/igorls/gemma-4-12B-it-heretic-GGUF)).
 
 YueStudio is not affiliated with any of these projects: it is a wrapper that makes them usable in
 one click on an ordinary PC.

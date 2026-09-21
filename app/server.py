@@ -66,11 +66,28 @@ LLM_PORT_DEFAULT = 8081
 LLM_IDLE_STOP_S = 900          # le serveur LLM s'arrête après 15 min sans usage
 
 # Modèles conseillés (recherche Hugging Face, sept. 2026 — voir PAROLIER.md).
-# Qwen3-8B abliterated v2 (huihui-ai, quantifié par mradermacher) : le meilleur
-# compromis créativité / français / VRAM. Version 4B pour les GPU 8 Go.
+# Qwen3.5-9B abliterated (huihui-ai, quantifié par mradermacher) : le meilleur
+# compromis créativité / français / VRAM. Gemma 4 12B Heretic : le plus créatif.
+# Qwen3-8B/4B : valeurs sûres d'architecture éprouvée (légère et repli).
 LLM_MODELS = {
+    "9b": {
+        "label": "Parolier 9B - recommandé (2026)",
+        "repo": "mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF",
+        "file": "Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf",
+        "size": 5627045248,
+        "vram": "~6 Go",
+        "no_think": False,  # Qwen3.5 : thinking coupé via le paramètre enable_thinking
+    },
+    "12b": {
+        "label": "Parolier 12B Heretic - créativité max (2026)",
+        "repo": "igorls/gemma-4-12B-it-heretic-GGUF",
+        "file": "gemma-4-12B-it-heretic-Q4_K_M.gguf",
+        "size": 7381381760,
+        "vram": "~8 Go",
+        "no_think": False,  # Gemma 4 : réponse directe par défaut
+    },
     "8b": {
-        "label": "Parolier 8B - recommandé",
+        "label": "Parolier 8B - valeur sûre (2025)",
         "repo": "mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF",
         "file": "Huihui-Qwen3-8B-abliterated-v2.Q4_K_M.gguf",
         "size": 5027780352,
@@ -86,7 +103,7 @@ LLM_MODELS = {
         "no_think": True,
     },
 }
-DEFAULT_LLM = "8b"
+DEFAULT_LLM = "9b"
 
 HOST = "127.0.0.1"        # adresse d'ecoute de l'interface (modifiable via --host)
 HOST_DEFAULT = HOST
@@ -582,7 +599,7 @@ class LlmEngine:
         self.model_id = model_id
         log(f"[i] Parolier {model_id} en cours de chargement (port {self.port})...")
 
-        for _ in range(240):  # ~2 min max (chargement Q4 8B ≈ 15-30 s)
+        for _ in range(240):  # ~2 min max (chargement Q4 9B ≈ 15-30 s)
             if llm_probe(self.port):
                 log("[i] Parolier prêt.")
                 return True, ""
@@ -977,6 +994,10 @@ def parse_lyrics_output(text: str) -> dict:
     """
     cleaned = re.sub(r"<think>.*?</think>", "", text or "",
                      flags=re.S | re.I).strip()
+    # Gemma 4 : le raisonnement éventuel voyage dans un canal dédié
+    # (<|channel>thought ... <channel|>), on le retire aussi.
+    cleaned = re.sub(r"<\|channel>thought.*?<channel\|>", "", cleaned,
+                     flags=re.S | re.I).strip()
     heads = {"titre": "title", "title": "title", "style": "style",
              "paroles": "lyrics", "lyrics": "lyrics"}
     sections = {"title": [], "style": [], "lyrics": []}
@@ -1040,7 +1061,7 @@ def run_lyrics(body: dict):
         return 503, {"error": {
             "message": ("Parolier local non installé. Dans PowerShell, depuis le dossier "
                         "de l'application : .\\installer.ps1 -AvecParolier "
-                        "(+ ~5 Go de modèle, une seule fois)."),
+                        "(+ ~6 Go de modèle, une seule fois)."),
             "code": "llm_not_installed",
         }}
     # Repli automatique : si le modèle demandé est absent, on prend celui qui
@@ -1077,6 +1098,7 @@ def run_lyrics(body: dict):
              "temperature": temperature,   # 1.0 = créatif ; baisser vers 0.7 = sage
              "top_p": 0.95,
              "max_tokens": 2048,
+             "enable_thinking": False,  # Qwen3.5/Gemma : direct (ignoré si inconnu)
              "seed": seed,
              "stream": False},
             timeout=600.0,

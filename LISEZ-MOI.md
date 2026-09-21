@@ -362,6 +362,7 @@ puis `.\\installer.ps1 -AvecParolier` (le modèle GGUF, lui, n'est pas re-télé
 - Conversion GGUF : [audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)
 - Moteur : [0xShug0/audio.cpp](https://github.com/0xShug0/audio.cpp) (v0.8.1)
 - Parolier local (optionnel) : serveur [llama.cpp](https://github.com/ggml-org/llama.cpp)
-  + [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
-  (GGUF [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF))
+  + [Huihui-Qwen3.5-9B-abliterated](https://huggingface.co/huihui-ai/Huihui-Qwen3.5-9B-abliterated)
+  (GGUF [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF),
+  ou [Gemma-4-12B Heretic](https://huggingface.co/igorls/gemma-4-12B-it-heretic-GGUF))
 - Article de référence : *YuE: Scaling Open Foundation Models for Long-Form Music Generation* (arXiv:2503.08638)

@@ -1486,9 +1486,33 @@ function updateParolierStatus() {
     return;
   }
   btn.disabled = false;
+  const installed = Object.keys(llm.models || {}).filter((id) => llm.models[id].installed);
+  const sel = $('#parolier-model');
+  let chosen = null;
+  if (sel) {
+    if (installed.length > 1) {
+      // Plusieurs modèles installés : l'utilisateur choisit (choix mémorisé).
+      const saved = localStorage.getItem('yuestudio.parolier');
+      chosen = installed.includes(sel.value) ? sel.value
+        : (installed.includes(saved) ? saved
+          : (installed.includes(llm.default_model) ? llm.default_model : installed[0]));
+      sel.innerHTML = '';
+      installed.forEach((id) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = llmModelLabel(llm, id);
+        sel.append(opt);
+      });
+      sel.value = chosen;
+      sel.classList.remove('hidden');
+    } else {
+      sel.classList.add('hidden');
+      chosen = installed[0] || null;
+    }
+  }
   const id = (llm.active_model && llm.models[llm.active_model])
     ? llm.active_model
-    : (llm.models[llm.default_model] ? llm.default_model : Object.keys(llm.models)[0]);
+    : (chosen || llm.default_model || Object.keys(llm.models)[0]);
   status.textContent = llm.ready
     ? tf('Prêt ({model}).', { model: llmModelLabel(llm, llm.active_model || id) })
     : tf('Installé ({model}) — démarre à la première génération (~20 s).',
@@ -1542,6 +1566,9 @@ async function onParolierGenerate() {
   $('#parolier-result').classList.add('hidden');
   $('#btn-parolier-use').classList.add('hidden');
   status.textContent = t('Écriture en cours… (30 à 60 s la première fois, chargement du modèle inclus)');
+  const sel = $('#parolier-model');
+  const wanted = sel && !sel.classList.contains('hidden') && sel.value ? sel.value : undefined;
+  if (wanted) localStorage.setItem('yuestudio.parolier', wanted);
   try {
     const data = await api('/api/lyrics', {
       method: 'POST',
@@ -1551,6 +1578,7 @@ async function onParolierGenerate() {
         subject,
         duration: $('#ai-duration').value,
         lang: I18N.lang,
+        model: wanted,
       }),
     });
     PAROLIER.data = data;
