@@ -114,7 +114,7 @@ C'est aussi la méthode officielle pour les vidéos de démonstration : rien à 
 | 🌗 **Thème sombre / clair / système** | Un bouton, trois états, mémorisé — contrastes WCAG AA dans les deux thèmes. |
 | 🌐 **Interface français / anglais** | Bascule instantanée, sans rechargement ni perte d'état. |
 | 🕘 **Historique complet** | Chaque génération : lecture, téléchargement, partition ABC, style et paroles copiables, réutilisation, régénération, notes personnelles. |
-| ✍️ **Aide à l'écriture** | Guide des paroles + générateur de **prompt pour LLM** intégré (ChatGPT / Claude / Gemini écrivent vos paroles au bon format). |
+| ✍️ **Aide à l'écriture** | Guide des paroles + **parolier local** intégré (un petit LLM abliterated écrit titre, style et paroles hors ligne) ou prompt pour ChatGPT / Claude / Gemini. |
 | 🔌 **Tout reste local** | Aucune donnée ne quitte votre machine. L'interface n'écoute que sur `127.0.0.1`. |
 | 🪟 **Arrêt propre** | Fermer la fenêtre **décharge le modèle** et coupe le moteur automatiquement. |
 
@@ -211,6 +211,8 @@ que vous pouvez déplacer ou copier sur une clé.
 .\installer.ps1 -Qualite q4              # plus léger (~8 Go de VRAM)
 .\installer.ps1 -ToutesQualites          # Q4 + Q8 + BF16 (~14 Go de disque)
 .\installer.ps1 -Backend vulkan          # force Vulkan (pas de CUDA)
+.\installer.ps1 -AvecParolier            # + parolier local 8B (écrit les paroles hors ligne, ~5 Go)
+.\installer.ps1 -AvecParolier -Parolier 4b  # parolier léger pour GPU 8 Go (~2,5 Go)
 .\installer.ps1 -Verifier                # revérifie / répare les fichiers existants
 .\installer.ps1 -SansLancement           # ne propose pas de démarrer à la fin
 ```
@@ -244,11 +246,16 @@ Chaque réglage avancé affiche sous son champ sa **valeur par défaut**, ses **
 La durée du morceau **suit la longueur des paroles** (≈ 10 secondes chantées par ligne,
 plafond réel de 6 minutes).
 
-### Pas de paroles ? Laissez un LLM les écrire
+### Pas de paroles ? Laissez le parolier les écrire
 
-La carte **🤖 Préparer avec une IA** (colonne de droite) construit un prompt de ~5 300 caractères
-au format exact attendu par YuE2, à coller dans ChatGPT, Claude, Gemini ou Mistral. Il renvoie trois
-blocs `TITRE / STYLE / PAROLES` prêts à recopier. Détails : [`PROMPT-LLM.md`](PROMPT-LLM.md).
+La carte **🤖 Préparer avec une IA** (colonne de droite) propose deux voies :
+
+- **✨ Parolier local** (recommandé, 100 % hors ligne) : un petit LLM abliterated
+  (Qwen3-8B, + ~5 Go en option) écrit le `TITRE`, le `STYLE` et les `PAROLES` directement
+  dans YueStudio, d'un clic — voir [`PAROLIER.md`](PAROLIER.md) ;
+- **📋 Copier le prompt** : le même prompt (~5 300 caractères, au format exact de YuE2)
+  à coller dans ChatGPT, Claude, Gemini ou Mistral, puis recopier les trois blocs —
+  voir [`PROMPT-LLM.md`](PROMPT-LLM.md).
 
 ### Historique
 
@@ -337,12 +344,15 @@ YueStudio/
 ├─ PREMIERS-PAS.md        prise en main en 5 minutes
 ├─ GUIDE-PAROLES.md       écrire des paroles efficaces pour YuE2
 ├─ PROMPT-LLM.md          le prompt à donner à un LLM pour écrire vos paroles
+├─ PAROLIER.md            le parolier local : petit LLM hors ligne (modèles, VRAM, API)
 ├─ README.txt           version texte brut, sans mise en forme
 ├─ docs/screenshots/    captures d'écran des README
 ├─ docs/exemples/       morceau exemple « cyber » (écoute MP3, WAV, pochette, MP4 lecteur)
 │
 ├─ engine/                créé à l'installation : binaires audio.cpp + journaux
+│  └─ llm/                option -AvecParolier : serveur llama.cpp du parolier
 ├─ models/Yue2-3B-GGUF/   créé à l'installation : poids GGUF (~3 à 13 Go)
+├─ models/Parolier-GGUF/  option -AvecParolier : petit LLM abliterated (~2,5 ou 5 Go)
 ├─ Mes chansons/          créé au premier lancement : les WAV générés
 └─ historique.json        créé au premier lancement : métadonnées des générations
 ```
@@ -364,6 +374,8 @@ Le code applicatif tient dans **5 fichiers** : `server.py` (≈ 1 150 lignes), `
 | GET | `/api/pending`, `/api/pending/<id>` | files et travaux en cours |
 | POST | `/api/update` | notes / métadonnées d'une entrée |
 | POST | `/api/import`, GET `/api/export` | import / export JSON de l'historique |
+| POST | `/api/lyrics` | le parolier local écrit `title` / `style` / `lyrics` (démarre le serveur LLM à la demande) |
+| POST | `/api/lyrics/unload` | arrête le parolier (libère sa VRAM) |
 | POST | `/api/unload` | décharge le modèle (libère la VRAM ; refusé `409` pendant une génération) |
 | POST | `/api/bye` | beacon de fermeture d'onglet (déchargement différé, voir plus haut) |
 | DELETE | `/api/history/<id>` | supprime une entrée et son WAV |
@@ -406,6 +418,9 @@ usage commercial.
 - **[m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B)** — modèle de génération musicale (paroles → chanson).
 - **[audio.cpp](https://github.com/0xShug0/audio.cpp)** — inférence locale performante (ggml), binaires Windows précompilés.
 - **[audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)** — poids convertis en GGUF.
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — serveur du parolier local (optionnel), avec
+  [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
+  quantifié par [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF).
 
 YueStudio n'est affilié à aucun de ces projets : c'est une interface d'assemblage qui les rend
 utilisables en un clic sur un PC grand public.

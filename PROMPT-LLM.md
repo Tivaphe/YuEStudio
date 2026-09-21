@@ -1,4 +1,4 @@
-﻿# 🤖 Le prompt à donner à un LLM pour écrire vos paroles
+# 🤖 Le prompt à donner à un LLM pour écrire vos paroles
 
 Donnez ce prompt à **ChatGPT, Claude, Gemini, Mistral, ou tout modèle local** : il vous rendra un
 bloc **TITRE / STYLE / PAROLES** directement copiable-collable dans YueStudio, au format exact
@@ -7,6 +7,10 @@ attendu par YuE2.
 > 💡 Dans YueStudio, la carte **« Préparer avec une IA »** (page Créer) génère ce prompt
 > **déjà rempli** avec votre style et votre sujet : cliquez, collez dans votre LLM, recopiez les
 > deux blocs dans le formulaire.
+>
+> ✨ **Mieux : le parolier local** (`.\\installer.ps1 -AvecParolier`, voir
+> [`PAROLIER.md`](PAROLIER.md)) fait tout cela **sans quitter YueStudio** : c'est exactement
+> ce prompt qui est envoyé au petit modèle, et le résultat remplit le formulaire d'un clic.
 
 ---
 

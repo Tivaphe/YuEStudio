@@ -54,6 +54,40 @@ ENGINE_LOG = ROOT / "engine" / "journal-moteur.log"
 BACKEND_FILE = ROOT / "engine" / "backend.txt"   # ecrit par installer.ps1
 PID_FILE = ROOT / "yuestudio.pid"
 
+# --- Parolier local (petit LLM llama.cpp, optionnel) ---------------------------
+# Un LLM abliterated (sans refus, plus créatif) écrit TITRE / STYLE / PAROLES
+# au format YuE2, à partir du style et du sujet saisis dans la carte
+# « Préparer avec une IA ». Téléchargé uniquement si demandé :
+#   .\installer.ps1 -AvecParolier
+LLM_DIR = ENGINE_DIR / "llm"
+LLM_MODELS_DIR = ROOT / "models" / "Parolier-GGUF"
+LLM_LOG = ROOT / "engine" / "journal-parolier.log"
+LLM_PORT_DEFAULT = 8081
+LLM_IDLE_STOP_S = 900          # le serveur LLM s'arrête après 15 min sans usage
+
+# Modèles conseillés (recherche Hugging Face, sept. 2026 — voir PAROLIER.md).
+# Qwen3-8B abliterated v2 (huihui-ai, quantifié par mradermacher) : le meilleur
+# compromis créativité / français / VRAM. Version 4B pour les GPU 8 Go.
+LLM_MODELS = {
+    "8b": {
+        "label": "Parolier 8B - recommandé",
+        "repo": "mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF",
+        "file": "Huihui-Qwen3-8B-abliterated-v2.Q4_K_M.gguf",
+        "size": 5027780352,
+        "vram": "~6 Go",
+        "no_think": True,   # Qwen3 hybride : /no_think = réponse directe, sans raisonnement
+    },
+    "4b": {
+        "label": "Parolier 4B - léger (GPU 8 Go)",
+        "repo": "mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated-GGUF",
+        "file": "Huihui-Qwen3-4B-Instruct-2507-abliterated.Q4_K_M.gguf",
+        "size": 2497281312,
+        "vram": "~3 Go",
+        "no_think": True,
+    },
+}
+DEFAULT_LLM = "8b"
+
 HOST = "127.0.0.1"        # adresse d'ecoute de l'interface (modifiable via --host)
 HOST_DEFAULT = HOST
 APP_PORT_DEFAULT = 8090
@@ -376,6 +410,256 @@ ENGINE = Engine()
 
 
 # ---------------------------------------------------------------------------
+# Parolier local (serveur llama.cpp, démarré à la demande)
+# ---------------------------------------------------------------------------
+#
+# Contrairement au moteur musical (toujours actif), le serveur LLM ne tourne
+# que pendant la génération de paroles : il démarre au premier appel à
+# POST /api/lyrics, s'arrête après 15 min d'inactivité, et est stoppé
+# automatiquement dès qu'une génération musicale commence (la musique a
+# priorité sur la VRAM — le parolier redémarre en ~15 s à la demande suivante).
+# Un serveur llama.cpp déjà lancé à la main sur le port 8081 est réutilisé
+# tel quel (et n'est jamais tué par YueStudio).
+
+LLM_EXE_NAMES = (
+    "llama-server.exe", "llama-server",      # CLI classique (toujours d'actualité)
+    "llama-serve.exe", "llama-serve",        # variante éventuelle
+    "llama.exe", "llama",                    # CLI unifiée : s'invoque via « llama serve »
+)
+
+
+def find_llm_exe() -> Path | None:
+    for name in LLM_EXE_NAMES:
+        candidate = LLM_DIR / name
+        if candidate.exists():
+            return candidate
+    if LLM_DIR.exists():
+        wanted = {n.lower() for n in LLM_EXE_NAMES}
+        for found in sorted(LLM_DIR.rglob("*")):
+            if found.is_file() and found.name.lower() in wanted:
+                return found
+    return None
+
+
+def llm_probe(port: int) -> bool:
+    """Vrai si le port répond comme un serveur LLM (llama.cpp ou compatible).
+
+    /health seul ne suffit pas (audio.cpp répond aussi « ok ») : on vérifie
+    /v1/models — audio.cpp y expose family=yue2, llama.cpp un format OpenAI.
+    """
+    status, body = http_json(f"http://{ENGINE_HOST}:{port}/health", timeout=5)
+    if status != 200 or not isinstance(body, dict):
+        return False
+    if (body.get("status") or "").lower() not in ("ok", "no slot available"):
+        return False
+    status, body = http_json(f"http://{ENGINE_HOST}:{port}/v1/models", timeout=5)
+    if status != 200 or not isinstance(body, dict):
+        return False
+    for entry in body.get("data") or []:
+        if isinstance(entry, dict) and entry.get("family") == "yue2":
+            return False  # c'est le moteur musical, pas un LLM
+    return True
+
+
+def llm_argv(exe: Path, model_file: Path, port: int, n_gpu_layers: int) -> list:
+    """Ligne de commande du serveur LLM (compatible CLI classique et unifiée)."""
+    args = [str(exe)]
+    if exe.stem.lower() == "llama":
+        args.append("serve")
+    args += [
+        "-m", str(model_file),
+        "--host", ENGINE_HOST,
+        "--port", str(port),
+        "-c", "8192",              # prompt (~1500 tok.) + paroles (~1500 tok.) à l'aise
+        "-ngl", str(n_gpu_layers),  # 999 = tout sur GPU, 0 = CPU seul
+        "--log-disable",           # le journal reste lisible (journal-parolier.log)
+    ]
+    return args
+
+
+class LlmEngine:
+    def __init__(self) -> None:
+        self.proc: subprocess.Popen | None = None
+        self.port: int = LLM_PORT_DEFAULT
+        self.model_id: str | None = None
+        self.exe: Path | None = None
+        self.reused: bool = False
+        self.log_handle = None
+        self._lock = threading.Lock()
+        self._idle_timer = None
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{ENGINE_HOST}:{self.port}"
+
+    def is_running(self) -> bool:
+        if self.reused:
+            return llm_probe(self.port)
+        return self.proc is not None and self.proc.poll() is None
+
+    def active(self) -> bool:
+        """Vrai si un serveur LLM utilisable répond (le nôtre ou un externe)."""
+        with self._lock:
+            if self.is_running():
+                return True
+            # Un serveur lancé à la main entre-temps ? On l'adopte.
+            for port in (LLM_PORT_DEFAULT, LLM_PORT_DEFAULT + 10):
+                if llm_probe(port):
+                    self.port = port
+                    self.reused = True
+                    self.model_id = self.model_id or "externe"
+                    return True
+            return False
+
+    def ensure(self, model_id: str) -> tuple:
+        """Démarre le serveur LLM si besoin. Renvoie (ok, message)."""
+        with self._lock:
+            if self.is_running():
+                if self.reused or self.model_id == model_id:
+                    self._arm_idle_locked()
+                    return True, ""
+                self._stop_locked("changement de modèle de parolier")
+            ok, message = self._start_locked(model_id)
+            if ok:
+                self._arm_idle_locked()
+            return ok, message
+
+    def _start_locked(self, model_id: str) -> tuple:
+        self.exe = find_llm_exe()
+        if self.exe is None:
+            return False, ("Le parolier local n'est pas installé. Dans PowerShell : "
+                           ".\\installer.ps1 -AvecParolier")
+        spec = LLM_MODELS.get(model_id)
+        if spec is None:
+            return False, f"Modèle de parolier inconnu : {model_id}"
+        model_file = LLM_MODELS_DIR / spec["file"]
+        if not model_file.exists():
+            return False, (f"Modèle « {model_id} » absent ({spec['file']}). Relancez "
+                           f".\\installer.ps1 -AvecParolier -Parolier {model_id}")
+
+        # Un serveur LLM tourne déjà ? On le réutilise (jamais tué par YueStudio).
+        for port in (LLM_PORT_DEFAULT, LLM_PORT_DEFAULT + 10):
+            if llm_probe(port):
+                self.port = port
+                self.reused = True
+                self.model_id = model_id
+                log(f"[i] Serveur LLM déjà actif sur le port {port} : je le réutilise.")
+                return True, ""
+
+        self.port = LLM_PORT_DEFAULT
+        if not port_is_free(self.port):
+            self.port = next(
+                (p for p in range(8082, 8120) if port_is_free(p)), LLM_PORT_DEFAULT
+            )
+
+        LLM_LOG.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if self.log_handle:
+                self.log_handle.close()
+        except Exception:
+            pass
+        self.log_handle = open(LLM_LOG, "a", encoding="utf-8", errors="replace")
+        self.log_handle.write(f"\n=== Parolier {model_id} {now_iso()} port={self.port} ===\n")
+        self.log_handle.flush()
+
+        backend = ENGINE.backend or detect_backend()
+        n_gpu_layers = 0 if backend == "cpu" else 999
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            self.proc = subprocess.Popen(
+                llm_argv(self.exe, model_file, self.port, n_gpu_layers),
+                cwd=str(LLM_DIR),
+                stdout=self.log_handle,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                creationflags=creationflags,
+            )
+        except Exception as exc:
+            return False, f"Impossible de lancer le serveur LLM : {exc}"
+        self.reused = False
+        self.model_id = model_id
+        log(f"[i] Parolier {model_id} en cours de chargement (port {self.port})...")
+
+        for _ in range(240):  # ~2 min max (chargement Q4 8B ≈ 15-30 s)
+            if llm_probe(self.port):
+                log("[i] Parolier prêt.")
+                return True, ""
+            if self.proc.poll() is not None:
+                self.proc = None
+                return False, ("Le serveur LLM s'est arrêté immédiatement. Voir "
+                               "engine/journal-parolier.log (VRAM insuffisante ? "
+                               "essayez 🧹 Libérer la VRAM puis le modèle 4B).")
+            time.sleep(0.5)
+        return False, "Le serveur LLM ne répond pas (délai dépassé)."
+
+    def stop(self, reason: str = "") -> None:
+        with self._lock:
+            self._stop_locked(reason)
+
+    def _stop_locked(self, reason: str = "") -> None:
+        if self._idle_timer is not None:
+            try:
+                self._idle_timer.cancel()
+            except Exception:
+                pass
+            self._idle_timer = None
+        if self.reused:
+            # Serveur externe : on s'en détache sans le tuer.
+            self.reused = False
+            self.model_id = None
+            return
+        if self.proc and self.proc.poll() is None:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=10)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            if reason:
+                log(f"[i] Parolier arrêté ({reason}).")
+        self.proc = None
+        self.model_id = None
+        if self.log_handle:
+            try:
+                self.log_handle.close()
+            except Exception:
+                pass
+            self.log_handle = None
+
+    def _arm_idle_locked(self) -> None:
+        """Arrêt automatique après 15 min sans génération de paroles."""
+        if self._idle_timer is not None:
+            try:
+                self._idle_timer.cancel()
+            except Exception:
+                pass
+
+        def _idle() -> None:
+            with self._lock:
+                if _LLM_BUSY[0] > 0:
+                    self._arm_idle_locked()  # une génération est en cours : on reporte
+                    return
+            self.stop("inactivité (15 min)")
+
+        timer = threading.Timer(LLM_IDLE_STOP_S, _idle)
+        timer.daemon = True
+        self._idle_timer = timer
+        timer.start()
+
+
+LLM = LlmEngine()
+
+# Compteur de générations de paroles en cours (protège le serveur LLM contre
+# l'arrêt automatique pendant qu'il écrit).
+_LLM_BUSY = [0]
+_LLM_BUSY_LOCK = threading.Lock()
+
+
+# ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
 
@@ -550,6 +834,14 @@ def run_generation(body: dict):
     if abc_text:
         options["abc"] = abc_text
 
+    # La musique a priorité sur la VRAM : le parolier est arrêté avant chaque
+    # génération (il redémarre tout seul en ~15 s à la prochaine demande).
+    # On ne coupe jamais un parolier en pleine écriture.
+    with _LLM_BUSY_LOCK:
+        lyrics_busy = _LLM_BUSY[0] > 0
+    if not lyrics_busy and LLM.is_running():
+        LLM.stop("génération musicale prioritaire")
+
     started = time.time()
     status, result = http_json(
         f"{ENGINE.base_url}/v1/tasks/run",
@@ -634,6 +926,195 @@ def run_generation(body: dict):
         f"({(entry['duration_ms'] or 0) / 1000:.0f} s de musique en {entry['gen_seconds']} s)"
     )
     return 200, {"entry": entry, "audio_url": f"/audio/{urllib.parse.quote(target.name)}"}
+
+
+# ---------------------------------------------------------------------------
+# Parolier : prompt, appel au LLM et découpage TITRE / STYLE / PAROLES
+# ---------------------------------------------------------------------------
+
+_LYRICS_TEMPLATE_CACHE: dict = {}
+
+
+def lyrics_template(lang: str) -> str:
+    """Gabarit du prompt parolier, lu dans app/index.html (source unique).
+
+    C'est exactement le texte que la carte « Préparer avec une IA » affiche
+    et copie : aucune duplication, aucune dérive possible entre la version
+    « copier vers ChatGPT » et la génération locale.
+    """
+    lang = "en" if lang == "en" else "fr"
+    if lang in _LYRICS_TEMPLATE_CACHE:
+        return _LYRICS_TEMPLATE_CACHE[lang]
+    tag_id = "ai-prompt-template-en" if lang == "en" else "ai-prompt-template"
+    try:
+        html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        start = html.index(f'id="{tag_id}"')
+        start = html.index(">", start) + 1
+        end = html.index("</script>", start)
+        template = html[start:end].strip()
+    except Exception:
+        template = ("Écris une chanson au format YuE2.\n\nSTYLE : {{STYLE}}\n"
+                    "SUJET : {{SUJET}}\nRéponds avec les blocs TITRE / STYLE / "
+                    "PAROLES séparés par des lignes '-----'.")
+    _LYRICS_TEMPLATE_CACHE[lang] = template
+    return template
+
+
+def build_lyrics_prompt(style: str, subject: str, duration: str, lang: str) -> str:
+    template = lyrics_template(lang)
+    return (template
+            .replace("{{STYLE}}", style or "(à préciser)")
+            .replace("{{SUJET}}", subject or "(à préciser)")
+            .replace("{{DUREE}}", duration or "standard (~3 min)"))
+
+
+def parse_lyrics_output(text: str) -> dict:
+    """Découpe la réponse du LLM en titre / style / paroles / durée estimée.
+
+    Tolérant : le modèle ajoute parfois du markdown (**TITRE :**, # ...) ou
+    oublie les séparateurs. Si les paroles sont introuvables, `parsed` vaut
+    False et l'interface affiche le texte brut (rien n'est perdu).
+    """
+    cleaned = re.sub(r"<think>.*?</think>", "", text or "",
+                     flags=re.S | re.I).strip()
+    heads = {"titre": "title", "title": "title", "style": "style",
+             "paroles": "lyrics", "lyrics": "lyrics"}
+    sections = {"title": [], "style": [], "lyrics": []}
+    current = None
+    for raw in cleaned.splitlines():
+        probe = raw.strip().lstrip("#*>—- ").strip().lstrip("*_").strip()
+        match = re.match(r"(?i)^(titre|title|style|paroles|lyrics)\s*:\s*(.*)$", probe)
+        if match:
+            current = heads[match.group(1).lower()]
+            rest = match.group(2).strip().strip("*_\"«» ").strip()
+            if rest:
+                sections[current].append(rest)
+            continue
+        stripped = raw.strip()
+        if stripped and set(stripped) <= {"-", "—", "="} and len(stripped) >= 3:
+            continue  # ligne séparatrice « ----- »
+        if current:
+            sections[current].append(raw.rstrip())
+
+    title = " ".join(sections["title"]).strip()
+    title = re.sub(r"\s+", " ", title).strip("*_\"'«» ").strip()[:120]
+    style = " ".join(s for s in sections["style"] if s.strip())
+    style = re.sub(r"\s+", " ", style).strip()
+    lyrics = "\n".join(sections["lyrics"]).strip()
+    lyrics = re.sub(r"\n{3,}", "\n\n", lyrics)
+
+    duration_estimate = ""
+    found = re.search(r"(?im)^(?:.*)?(durée estimée|estimated duration)\s*:\s*(.+)$",
+                      cleaned)
+    if found:
+        duration_estimate = re.sub(r"\s+", " ", found.group(2)).strip("*_ ").strip()[:80]
+
+    return {
+        "title": title,
+        "style": style,
+        "lyrics": lyrics,
+        "duration_estimate": duration_estimate,
+        "parsed": bool(lyrics),
+    }
+
+
+def run_lyrics(body: dict):
+    """Génère TITRE / STYLE / PAROLES avec le parolier local (llama.cpp)."""
+    lang = "en" if (body.get("lang") or "") == "en" else "fr"
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        # Appel direct à l'API (sans l'interface) : on construit le prompt ici.
+        style = (body.get("style") or "").strip()
+        subject = (body.get("subject") or "").strip()
+        if not style and not subject:
+            return 400, {"error": {"message": "Indiquez au moins un style ou un sujet."}}
+        prompt = build_lyrics_prompt(style, subject,
+                                     (body.get("duration") or "").strip(), lang)
+
+    wanted = body.get("model") or DEFAULT_LLM
+    if wanted not in LLM_MODELS:
+        wanted = DEFAULT_LLM
+    installed = [mid for mid, spec in LLM_MODELS.items()
+                 if (LLM_MODELS_DIR / spec["file"]).exists()]
+    if find_llm_exe() is None or not installed:
+        return 503, {"error": {
+            "message": ("Parolier local non installé. Dans PowerShell, depuis le dossier "
+                        "de l'application : .\\installer.ps1 -AvecParolier "
+                        "(+ ~5 Go de modèle, une seule fois)."),
+            "code": "llm_not_installed",
+        }}
+    # Repli automatique : si le modèle demandé est absent, on prend celui qui
+    # est là (l'interface affiche lequel a servi).
+    model_id = wanted if wanted in installed else installed[0]
+
+    with _LLM_BUSY_LOCK:
+        _LLM_BUSY[0] += 1
+    try:
+        ok, message = LLM.ensure(model_id)
+        if not ok:
+            return 503, {"error": {"message": message, "code": "llm_unavailable"}}
+
+        spec = LLM_MODELS[model_id]
+        content = prompt + ("\n/no_think" if spec.get("no_think") else "")
+        seed = body.get("seed")
+        if seed in (None, "", "random"):
+            seed = int(time.time() * 1000) % (2 ** 31)
+        else:
+            try:
+                seed = max(0, min(2 ** 31 - 1, int(seed)))
+            except Exception:
+                seed = int(time.time() * 1000) % (2 ** 31)
+        try:
+            temperature = float(body.get("temperature") or 1.0)
+        except (TypeError, ValueError):
+            temperature = 1.0
+        temperature = max(0.0, min(2.0, temperature))
+
+        started = time.time()
+        status, result = http_json(
+            f"{LLM.base_url}/v1/chat/completions",
+            {"messages": [{"role": "user", "content": content}],
+             "temperature": temperature,   # 1.0 = créatif ; baisser vers 0.7 = sage
+             "top_p": 0.95,
+             "max_tokens": 2048,
+             "seed": seed,
+             "stream": False},
+            timeout=600.0,
+        )
+        elapsed = time.time() - started
+    finally:
+        with _LLM_BUSY_LOCK:
+            _LLM_BUSY[0] -= 1
+
+    if status != 200:
+        message = "Le parolier n'a pas répondu."
+        if isinstance(result, dict):
+            err = result.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                message = err["message"][:300]
+            elif result.get("raw"):
+                message = str(result["raw"])[:300]
+        log(f"[!] Parolier : {message}")
+        return status or 502, {"error": {"message": message}}
+
+    text = ""
+    try:
+        text = (result.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    except Exception:
+        text = ""
+    if not text.strip():
+        return 502, {"error": {"message": "Le parolier a renvoyé une réponse vide."}}
+
+    parsed = parse_lyrics_output(text)
+    log(f"[+] Parolier ({model_id}, {elapsed:.0f} s) : {parsed['title'] or '(sans titre)'}")
+    return 200, {
+        "model": model_id,
+        "model_fallback": model_id != wanted,
+        "gen_seconds": round(elapsed, 1),
+        "seed": seed,
+        **parsed,
+        "raw": text,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -846,6 +1327,12 @@ class Handler(BaseHTTPRequestHandler):
             self._update(body)
         elif path == "/api/import":
             self._import(body)
+        elif path == "/api/lyrics":
+            status, result = run_lyrics(body)
+            self._json(status, result)
+        elif path == "/api/lyrics/unload":
+            LLM.stop("arrêt demandé")
+            self._json(200, {"ok": True, "message": "Parolier arrêté : la VRAM est libérée."})
         elif path == "/api/open-songs":
             ok = open_in_file_manager(SONGS_DIR)
             self._json(200, {"ok": ok, "path": str(SONGS_DIR)})
@@ -863,6 +1350,7 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            LLM.stop("libération manuelle de la VRAM")
             ok = unload_engine_model(timeout=60)
             self._json(
                 200,
@@ -987,6 +1475,12 @@ class Handler(BaseHTTPRequestHandler):
             )
         )
 
+        llm_exe = find_llm_exe()
+        llm_installed = {
+            mid: (LLM_MODELS_DIR / spec["file"]).exists()
+            for mid, spec in LLM_MODELS.items()
+        }
+
         self._json(
             200,
             {
@@ -996,6 +1490,18 @@ class Handler(BaseHTTPRequestHandler):
                     "backend": health.get("backend") or ENGINE.backend,
                     "port": ENGINE.port,
                     "reused": ENGINE.reused,
+                },
+                "llm": {
+                    "installed": llm_exe is not None and any(llm_installed.values()),
+                    "server_present": llm_exe is not None,
+                    "ready": LLM.active(),
+                    "port": LLM.port,
+                    "active_model": LLM.model_id,
+                    "default_model": DEFAULT_LLM,
+                    "models": {
+                        mid: {**spec, "installed": llm_installed[mid]}
+                        for mid, spec in LLM_MODELS.items()
+                    },
                 },
                 "models": {
                     "dir": str(MODELS_DIR),
@@ -1160,6 +1666,10 @@ def cleanup() -> None:
         pass
     try:
         ENGINE.stop()
+    except Exception:
+        pass
+    try:
+        LLM.stop("arrêt de YueStudio")
     except Exception:
         pass
     try:

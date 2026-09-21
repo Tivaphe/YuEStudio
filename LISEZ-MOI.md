@@ -88,6 +88,8 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 .\installer.ps1 -ToutesQualites                  # Q4 + Q8 + BF16 (~12 Go de modèles)
 .\installer.ps1 -Qualite q4                      # le plus léger (~3 Go)
 .\installer.ps1 -Backend vulkan                  # si CUDA pose problème (58 Mo de moteur)
+.\installer.ps1 -AvecParolier                    # + parolier local 8B (paroles hors ligne, ~5 Go)
+.\installer.ps1 -AvecParolier -Parolier 4b       # parolier léger, GPU 8 Go (~2,5 Go)
 .\installer.ps1 -Verifier                        # diagnostic complet, sans rien télécharger
 ```
 
@@ -160,23 +162,33 @@ confirmation avant un rechargement ou une fermeture tant qu'une génération ou 
 ### Carte « 🤖 Préparer avec une IA » (colonne de droite)
 
 Vous avez une idée mais pas le temps d'écrire 30 lignes de paroles structurées ?
+Renseignez **Style souhaité** et **Sujet de la chanson** (en français, avec vos mots),
+choisissez la **durée visée**, puis au choix :
 
-1. Renseignez **Style souhaité** et **Sujet de la chanson** (en français, avec vos mots),
-   et choisissez la **durée visée**.
-2. Cliquez **📋 Copier le prompt** : un prompt de ~5 300 caractères, au format exact attendu
-   par YuE2, est copié dans le presse-papiers.
-3. Collez-le dans **ChatGPT, Claude, Gemini, Mistral** ou un modèle local.
-4. Le LLM répond avec trois blocs : **TITRE / STYLE / PAROLES** (+ la durée estimée).
-5. Recopiez le bloc STYLE dans le champ *Style*, le bloc PAROLES dans *Paroles*, le TITRE
+**✨ Parolier local (100 % hors ligne, recommandé).** Si vous avez installé l'option
+(`.\installer.ps1 -AvecParolier`, voir [`PAROLIER.md`](PAROLIER.md)), cliquez
+**✨ Écrire les paroles** : le petit modèle abliterated écrit le **TITRE**, le **STYLE**
+et les **PAROLES** directement dans YueStudio, puis **⬆ Utiliser** remplit le
+formulaire. Chaque clic donne une autre version (graine différente).
+
+**📋 Copier le prompt (LLM externe).** Sans l'option parolier :
+
+1. Cliquez **📋 Copier le prompt** : un prompt de ~5 300 caractères, au format exact
+   attendu par YuE2, est copié dans le presse-papiers.
+2. Collez-le dans **ChatGPT, Claude, Gemini, Mistral** ou un modèle local.
+3. Le LLM répond avec trois blocs : **TITRE / STYLE / PAROLES** (+ la durée estimée).
+4. Recopiez le bloc STYLE dans le champ *Style*, le bloc PAROLES dans *Paroles*, le TITRE
    dans *Titre*, puis 🎵 Générer.
 
-Le prompt impose au LLM toutes les contraintes du modèle : balises anglaises, `[Intro]` et
-`[Interlude]` vides, refrain dupliqué mot pour mot, 6 à 10 syllabes par ligne, rimes régulières,
-structure adaptée à la durée, et aucun mot de production dans les paroles.
-Déroulez **👁 Voir / copier tout le prompt** pour le lire ou l'ajuster.
+Dans les deux cas, le prompt impose au LLM toutes les contraintes du modèle : balises
+anglaises, `[Intro]` et `[Interlude]` vides, refrain dupliqué mot pour mot, 6 à 10
+syllabes par ligne, rimes régulières, structure adaptée à la durée, et aucun mot de
+production dans les paroles. Déroulez **👁 Voir / copier tout le prompt** pour le lire
+ou l'ajuster.
 
-📄 Le même prompt, avec sa version courte et des exemples de relances utiles, se trouve dans
-**`PROMPT-LLM.md`**.
+📄 Le même prompt, avec sa version courte et des exemples de relances utiles, se trouve
+dans **`PROMPT-LLM.md`**. Le parolier local est documenté dans **`PAROLIER.md`**
+(modèles, partage de la VRAM avec YuE2, dépannage).
 
 ### Onglet « 🕘 Historique »
 Chaque génération est conservée avec :
@@ -252,8 +264,10 @@ YueStudio/
 │  ├─ app.js  style.css  favicon.svg
 ├─ engine/                moteur audio.cpp (audiocpp_server.exe + DLL)
 │  ├─ server.json         configuration générée automatiquement
-│  └─ journal-moteur.log  ← à lire en cas de problème
+│  ├─ journal-moteur.log  ← à lire en cas de problème
+│  └─ llm/                option -AvecParolier : serveur llama.cpp + journal-parolier.log
 ├─ models/Yue2-3B-GGUF/   poids du modèle (GGUF + sidecars)
+├─ models/Parolier-GGUF/  option -AvecParolier : petit LLM abliterated (GGUF)
 ├─ Mes chansons/          🎧 vos fichiers WAV générés
 └─ historique.json        🗂️ tout l'historique (titre, style, paroles, paramètres…)
 ```
@@ -279,6 +293,8 @@ Une sauvegarde = `historique.json` + dossier `Mes chansons`.
 | Chanson coupée / répétitive | Raccourcissez les paroles, augmentez **Durée maximale** dans Réglages avancés, ou changez de graine. |
 | Page blanche dans le navigateur | Rechargez (F5). Vérifiez que la fenêtre noire est toujours ouverte. |
 | Antivirus qui supprime `audiocpp_server.exe` | Faux positif classique sur les binaires ggml non signés : ajoutez le dossier `YueStudio` aux exclusions. |
+| Parolier : `non installé` | Normal sans l'option : `.\\installer.ps1 -AvecParolier` (voir `PAROLIER.md`). |
+| Parolier qui s'arrête aussitôt | VRAM insuffisante : 🧹 *Libérer la VRAM*, modèle **4B**, détails dans `engine\\journal-parolier.log`. |
 
 Réglages fins : les options déjà exposées dans l'interface (**Durée maximale** =
 `semantic_max_tokens`, **Expressivité du chant** = `semantic_temperature`) sont documentées dans
@@ -325,6 +341,8 @@ moteur disparaît et le port est libéré.
 Le modèle YuE2 et le moteur audio.cpp évoluent vite.
 Modifiez la variable `$Version` en haut de `installer.ps1` (ex. `v0.8.2`),
 puis relancez `1-INSTALLER.bat`. Les modèles déjà téléchargés ne sont pas re-téléchargés.
+Même principe pour le parolier : variable `$LlamaBuild` (ex. build llama.cpp plus récent),
+puis `.\\installer.ps1 -AvecParolier` (le modèle GGUF, lui, n'est pas re-téléchargé).
 
 ---
 
@@ -343,4 +361,7 @@ puis relancez `1-INSTALLER.bat`. Les modèles déjà téléchargés ne sont pas 
 - YuE2 : Multimodal Art Projection (M-A-P) & OpenMOSS — [m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) · [démos](https://map-yue2.github.io/)
 - Conversion GGUF : [audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)
 - Moteur : [0xShug0/audio.cpp](https://github.com/0xShug0/audio.cpp) (v0.8.1)
+- Parolier local (optionnel) : serveur [llama.cpp](https://github.com/ggml-org/llama.cpp)
+  + [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
+  (GGUF [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF))
 - Article de référence : *YuE: Scaling Open Foundation Models for Long-Form Music Generation* (arXiv:2503.08638)

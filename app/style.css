@@ -449,6 +449,13 @@ html.theme-ready .btn {
 .ai-details summary { cursor: pointer; font-size: 12.5px; color: var(--text-dim); }
 .ai-preview { max-height: 320px; font-size: 11.5px; }
 
+/* ---- parolier local (petit LLM hors ligne) ---- */
+.parolier-sep { border: none; border-top: 1px solid var(--border-soft); margin: 16px 0 12px; }
+.parolier-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+.parolier-result { margin-top: 10px; }
+.parolier-title { margin: 6px 0 8px; font-size: 15px; }
+.parolier-lyrics { max-height: 260px; font-size: 12.5px; }
+
 .tips-sub { margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
 .tips-rules { margin: 0; padding-left: 20px; color: var(--text-dim); font-size: 13px; }
 .tips-rules li { margin-bottom: 8px; }

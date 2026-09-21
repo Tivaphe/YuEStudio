@@ -146,6 +146,7 @@ async function loadState() {
   }
 
   renderQualityOptions();
+  updateParolierStatus();
 
   if (!models.sidecars_ok) {
     toast('Fichiers « sidecars » du modèle manquants : relancez 1-INSTALLER.bat.', 'warn', 9000);
@@ -213,6 +214,8 @@ function refreshDynamicStrings() {
   if (hint) {
     hint.textContent = t('Le prompt sera complété avec votre style et votre sujet.');
   }
+  if (typeof updateParolierStatus === 'function') updateParolierStatus();
+  if (typeof PAROLIER !== 'undefined' && PAROLIER.data) showParolierResult(PAROLIER.data);
 }
 
 /**
@@ -1447,6 +1450,135 @@ function initAiCard() {
 }
 
 // ---------------------------------------------------------------------------
+// Parolier local : le petit LLM écrit titre + style + paroles, hors ligne
+// ---------------------------------------------------------------------------
+
+const PAROLIER = { data: null };
+
+function llmState() {
+  return (STATE.state && STATE.state.llm) || null;
+}
+
+function llmModelLabel(llm, id) {
+  const spec = llm && llm.models && llm.models[id];
+  return spec ? t(spec.label) : id;
+}
+
+/** État du parolier sous le bouton — rappelé au changement de langue. */
+function updateParolierStatus() {
+  const llm = llmState();
+  const status = $('#parolier-status');
+  const btn = $('#btn-parolier');
+  if (!status || !btn) return;
+  if (!llm) {
+    status.textContent = '';
+    btn.disabled = true;
+    return;
+  }
+  if (!llm.installed) {
+    btn.disabled = true;
+    status.innerHTML = '';
+    status.append(document.createTextNode(t('Non installé — une seule fois, dans PowerShell :') + ' '));
+    const code = document.createElement('span');
+    code.className = 'mono';
+    code.textContent = '.\\installer.ps1 -AvecParolier';
+    status.append(code);
+    return;
+  }
+  btn.disabled = false;
+  const id = (llm.active_model && llm.models[llm.active_model])
+    ? llm.active_model
+    : (llm.models[llm.default_model] ? llm.default_model : Object.keys(llm.models)[0]);
+  status.textContent = llm.ready
+    ? tf('Prêt ({model}).', { model: llmModelLabel(llm, llm.active_model || id) })
+    : tf('Installé ({model}) — démarre à la première génération (~20 s).',
+        { model: llmModelLabel(llm, id) });
+}
+
+function showParolierResult(data) {
+  $('#parolier-result').classList.remove('hidden');
+  $('#parolier-title').textContent = data.title || t('Sans titre');
+  $('#parolier-style').textContent = data.style || '—';
+  const lyricsEl = $('#parolier-lyrics');
+  if (data.parsed) {
+    lyricsEl.textContent = data.lyrics;
+  } else {
+    // Repli : le modèle a répondu hors format — on affiche tout, rien n'est perdu.
+    lyricsEl.textContent = data.raw || '';
+  }
+  const llm = llmState();
+  $('#parolier-meta').textContent = tf('Écrit en {dur} avec {model} (graine {seed}).',
+    {
+      dur: fmtSeconds(data.gen_seconds),
+      model: llm ? llmModelLabel(llm, data.model) : data.model,
+      seed: data.seed,
+    })
+    + (data.duration_estimate ? ` ${data.duration_estimate}` : '');
+  $('#parolier-status').textContent = '';
+  $('#btn-parolier-use').classList.remove('hidden');
+}
+
+function useParolierResult() {
+  const data = PAROLIER.data;
+  if (!data) return;
+  if (data.title) $('#f-title').value = data.title;
+  if (data.style) $('#f-style').value = data.style;
+  $('#f-lyrics').value = data.lyrics || data.raw || '';
+  updateCounters();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Paroles du parolier copiées dans le formulaire : relisez, ajustez, puis 🎵 Générer.', 'ok', 6000);
+}
+
+async function onParolierGenerate() {
+  const style = $('#ai-style').value.trim();
+  const subject = $('#ai-subject').value.trim();
+  if (!style && !subject) {
+    toast('Indiquez au moins un style ou un sujet : le prompt sera bien plus utile.', 'warn', 6000);
+    return;
+  }
+  const btn = $('#btn-parolier');
+  const status = $('#parolier-status');
+  btn.disabled = true;
+  $('#parolier-result').classList.add('hidden');
+  $('#btn-parolier-use').classList.add('hidden');
+  status.textContent = t('Écriture en cours… (30 à 60 s la première fois, chargement du modèle inclus)');
+  try {
+    const data = await api('/api/lyrics', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt: buildAiPrompt(),
+        style,
+        subject,
+        duration: $('#ai-duration').value,
+        lang: I18N.lang,
+      }),
+    });
+    PAROLIER.data = data;
+    showParolierResult(data);
+    if (!data.parsed) {
+      toast('Le parolier a répondu hors format : texte brut affiché, copiez les bons passages.', 'warn', 8000);
+    }
+    await loadState();   // le parolier est maintenant « prêt » : on l'affiche
+    $('#parolier-status').textContent = '';
+  } catch (e) {
+    if (e.data && e.data.error && e.data.error.code === 'llm_not_installed') {
+      await loadState();   // affiche la commande d'installation sous le bouton
+    } else {
+      updateParolierStatus();
+    }
+    toast(e.message, 'err', 9000);
+  } finally {
+    const llm = llmState();
+    btn.disabled = !!(llm && !llm.installed);
+  }
+}
+
+function initParolier() {
+  $('#btn-parolier').addEventListener('click', onParolierGenerate);
+  $('#btn-parolier-use').addEventListener('click', useParolierResult);
+}
+
+// ---------------------------------------------------------------------------
 // Navigation / divers
 // ---------------------------------------------------------------------------
 
@@ -1574,6 +1706,7 @@ function initUi() {
   initUi();
   initForm();
   initAiCard();
+  initParolier();
   initUnloadOnClose();
   setView('create');
   await loadState();

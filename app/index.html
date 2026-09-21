@@ -269,6 +269,24 @@ Les néons s'allument sur le boulevard
             <summary>👁 Voir / copier tout le prompt</summary>
             <pre id="ai-preview" class="score ai-preview"></pre>
           </details>
+
+          <hr class="parolier-sep">
+          <div class="parolier">
+            <span class="label">✨ Parolier local <em class="req">100 % hors ligne</em></span>
+            <p class="hint">Le petit modèle abliterated écrit le titre, le style et les paroles
+            directement ici, sans passer par ChatGPT. Un clic remplit le formulaire.</p>
+            <div class="parolier-actions">
+              <button type="button" class="btn btn-primary" id="btn-parolier">✨ Écrire les paroles</button>
+              <button type="button" class="btn btn-ghost hidden" id="btn-parolier-use">⬆ Utiliser</button>
+            </div>
+            <p class="hint" id="parolier-status"></p>
+            <div id="parolier-result" class="parolier-result hidden">
+              <h3 id="parolier-title" class="parolier-title"></h3>
+              <pre id="parolier-style" class="htext"></pre>
+              <pre id="parolier-lyrics" class="htext parolier-lyrics"></pre>
+              <p class="hint" id="parolier-meta"></p>
+            </div>
+          </div>
         </div>
 
         <div class="card tips">

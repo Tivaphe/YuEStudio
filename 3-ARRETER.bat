@@ -31,6 +31,21 @@ if not errorlevel 1 (
   echo  [..] Le moteur audio.cpp ne tournait pas.
 )
 
+rem --- 3. Le parolier local (serveur llama.cpp, optionnel)
+tasklist /FI "IMAGENAME eq llama-server.exe" 2>nul | find /I "llama-server.exe" >nul
+if not errorlevel 1 (
+  taskkill /F /IM llama-server.exe >nul 2>nul
+  echo  [OK] Parolier local arrete : la VRAM est liberee.
+) else (
+  tasklist /FI "IMAGENAME eq llama.exe" 2>nul | find /I "llama.exe" >nul
+  if not errorlevel 1 (
+    taskkill /F /IM llama.exe >nul 2>nul
+    echo  [OK] Parolier local arrete : la VRAM est liberee.
+  ) else (
+    echo  [..] Le parolier local ne tournait pas.
+  )
+)
+
 echo.
 echo  Termine. Vous pouvez fermer cette fenetre.
 echo.

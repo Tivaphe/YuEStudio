@@ -107,7 +107,7 @@ This is also the official way to embed demo videos — nothing to host elsewhere
 | 🚀 **One-click install** | `1-INSTALLER.bat` downloads the engine and the model, verifies SHA-256 checksums and resumes interrupted downloads. |
 | 🧠 **VRAM under control** | 3 quality levels (Q4 / Q8 / BF16), **lazy** model loading, automatic unload after 30 min idle. |
 | 🕘 **Full history** | Every generation: playback, download, ABC score, copyable style and lyrics, reuse, regenerate, personal notes. |
-| ✍️ **Lyrics assistance** | Lyrics guide + built-in **LLM prompt generator** (have ChatGPT / Claude / Gemini write your lyrics in the right format). |
+| ✍️ **Lyrics assistance** | Lyrics guide + built-in **offline lyricist** (a small abliterated LLM writes title, style and lyrics on-device) or prompt for ChatGPT / Claude / Gemini. |
 | 🌗 **Dark / light / system theme** | One button, three states, persisted — with WCAG AA contrast in both themes. |
 | 🌐 **French / English UI** | Instant switch, no reload, no lost state. |
 | 🔌 **Everything stays local** | No data ever leaves your machine. The UI only listens on `127.0.0.1`. |
@@ -198,6 +198,8 @@ targets French users first; the interface itself has an English mode.
 .\installer.ps1 -Qualite q4              # lighter (~8 GB of VRAM)
 .\installer.ps1 -ToutesQualites          # Q4 + Q8 + BF16 (~14 GB on disk)
 .\installer.ps1 -Backend vulkan          # force Vulkan (no CUDA)
+.\installer.ps1 -AvecParolier            # + offline 8B lyricist (writes lyrics on-device, ~5 GB)
+.\installer.ps1 -AvecParolier -Parolier 4b  # light lyricist for 8 GB GPUs (~2.5 GB)
 .\installer.ps1 -Verifier                # re-verify / repair existing files
 .\installer.ps1 -SansLancement           # do not offer to start at the end
 ```
@@ -231,12 +233,17 @@ range** right under the field; the **↺ Default values** button resets all of t
 Song duration **follows the length of the lyrics** (≈ 10 sung seconds per line, real ceiling of
 6 minutes).
 
-### No lyrics? Let an LLM write them
+### No lyrics? Let the lyricist write them
 
-The **🤖 Prepare with an AI** card (right column) builds a prompt in the exact format YuE2 expects,
-ready to paste into ChatGPT, Claude, Gemini or Mistral. It returns three blocks
-`TITLE / STYLE / LYRICS` that you copy back into the form. The prompt itself exists in both French
-and English and follows the interface language.
+The **🤖 Prepare with an AI** card (right column) offers two paths:
+
+- **✨ Local lyricist** (recommended, fully offline): a small abliterated LLM (Qwen3-8B,
+  optional + ~5 GB) writes the `TITLE`, `STYLE` and `LYRICS` right inside YueStudio, in one
+  click — see [`PAROLIER.md`](PAROLIER.md) (French);
+- **📋 Copy the prompt**: the same prompt in the exact format YuE2 expects, ready to paste
+  into ChatGPT, Claude, Gemini or Mistral, then copy the three blocks back.
+
+The prompt itself exists in both French and English and follows the interface language.
 
 ### History
 
@@ -328,12 +335,15 @@ YueStudio/
 ├─ PREMIERS-PAS.md        5-minute getting started
 ├─ GUIDE-PAROLES.md       writing effective lyrics for YuE2
 ├─ PROMPT-LLM.md          the prompt to give an LLM to write your lyrics
+├─ PAROLIER.md            the offline lyricist: small local LLM (models, VRAM, API)
 ├─ README.txt             plain-text version, no formatting
 ├─ docs/screenshots/      README screenshots
 ├─ docs/exemples/         "cyber" example track (streamable MP3, lossless WAV, cover, player MP4)
 │
 ├─ engine/                created at install time: audio.cpp binaries + logs
+│  └─ llm/                -AvecParolier option: llama.cpp lyricist server
 ├─ models/Yue2-3B-GGUF/   created at install time: GGUF weights (~3 to 13 GB)
+├─ models/Parolier-GGUF/  -AvecParolier option: small abliterated LLM (~2.5 or 5 GB)
 ├─ Mes chansons/          created on first run: generated WAV files
 └─ historique.json        created on first run: generation metadata
 ```
@@ -355,6 +365,8 @@ The application code lives in **5 files**: `server.py` (~1,150 lines), `index.ht
 | GET | `/api/pending`, `/api/pending/<id>` | queues and running jobs |
 | POST | `/api/update` | notes / metadata of an entry |
 | POST | `/api/import`, GET `/api/export` | JSON import / export of the history |
+| POST | `/api/lyrics` | the local lyricist writes `title` / `style` / `lyrics` (starts the LLM server on demand) |
+| POST | `/api/lyrics/unload` | stop the lyricist (free its VRAM) |
 | POST | `/api/unload` | unload the model (free VRAM; `409` while a generation is running) |
 | POST | `/api/bye` | tab-close beacon (deferred unload, see above) |
 | DELETE | `/api/history/<id>` | delete an entry and its WAV |
@@ -396,6 +408,9 @@ non-commercial use**. Check the upstream license before any commercial use.
 - **[m-a-p/YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B)** — music generation model (lyrics → song).
 - **[audio.cpp](https://github.com/0xShug0/audio.cpp)** — fast local inference (ggml), prebuilt Windows binaries.
 - **[audio-cpp/Yue2-3B-GGUF](https://huggingface.co/audio-cpp/Yue2-3B-GGUF)** — weights converted to GGUF.
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — local lyricist server (optional), with
+  [Huihui-Qwen3-8B-abliterated-v2](https://huggingface.co/huihui-ai/Huihui-Qwen3-8B-abliterated-v2)
+  quantized by [mradermacher](https://huggingface.co/mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF).
 
 YueStudio is not affiliated with any of these projects: it is a wrapper that makes them usable in
 one click on an ordinary PC.

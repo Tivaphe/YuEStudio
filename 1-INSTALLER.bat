@@ -12,6 +12,7 @@ echo ################################################################
 echo.
 echo  Tout sera telecharge DANS CE DOSSIER (rien n'est installe dans Windows).
 echo  Prevoir environ 5,5 Go d'espace disque (12 Go avec toutes les qualites).
+echo  Option parolier local (ecrit les paroles hors ligne, +5 Go) : voir PAROLIER.md.
 echo.
 echo  Si Windows affiche une alerte de securite, autorisez l'execution :
 echo  le script telecharge uniquement depuis github.com et huggingface.co.

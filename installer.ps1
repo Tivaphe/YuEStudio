@@ -23,6 +23,9 @@
    .\installer.ps1 -Backend cpu         force CPU (tres lent, depannage)
    .\installer.ps1 -ToutesQualites      telecharge Q4 + Q8 + BF16 (~14 Go)
    .\installer.ps1 -Qualite q4          telecharge uniquement la version Q4
+   .\installer.ps1 -AvecParolier        ajoute le parolier local (LLM, +~5 Go)
+   .\installer.ps1 -AvecParolier -Parolier 4b
+                                        parolier leger pour GPU 8 Go (+~2,5 Go)
    .\installer.ps1 -Verifier            affiche un diagnostic, ne telecharge pas
 ================================================================================
 #>
@@ -36,6 +39,11 @@ param(
     [string]$Qualite = 'q8',
 
     [switch]$ToutesQualites,
+    [switch]$AvecParolier,
+
+    [ValidateSet('8b', '4b', 'les-deux')]
+    [string]$Parolier = '8b',
+
     [switch]$Verifier
 )
 
@@ -56,6 +64,25 @@ $Version   = 'v0.8.1'
 $GhBase    = "https://github.com/0xShug0/audio.cpp/releases/download/$Version"
 $HfBase    = 'https://huggingface.co/audio-cpp/Yue2-3B-GGUF/resolve/main'
 $HfApi     = 'https://huggingface.co/api/models/audio-cpp/Yue2-3B-GGUF/tree/main?recursive=true'
+
+# --- Parolier local (option -AvecParolier) ------------------------------------
+# Serveur llama.cpp officiel + petit LLM abliterated (Qwen3, GGUF Q4_K_M).
+# Tailles vérifiées via l'API Hugging Face (sept. 2026).
+$LlamaBuild = 'b10964'
+$LlamaBase  = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaBuild"
+$LlmDir      = Join-Path $EngineDir 'llm'
+$ParolierDir = Join-Path $Root 'models\Parolier-GGUF'
+
+$ParolierModeles = @{
+    '8b' = @{ Nom = 'Parolier 8B (recommandé)'
+              Repo = 'mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF'
+              Fichier = 'Huihui-Qwen3-8B-abliterated-v2.Q4_K_M.gguf'
+              Taille = 5027780352; Vram = '~6 Go' }
+    '4b' = @{ Nom = 'Parolier 4B (léger, GPU 8 Go)'
+              Repo = 'mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated-GGUF'
+              Fichier = 'Huihui-Qwen3-4B-Instruct-2507-abliterated.Q4_K_M.gguf'
+              Taille = 2497281312; Vram = '~3 Go' }
+}
 
 $Sidecars = @(
     'sidecars/yue2-model-config.json',
@@ -339,6 +366,15 @@ if ($Verifier) {
             if (Test-Path $p) { Write-Ok ("Modele [{0}] : {1} ({2})" -f $q, $f, (Get-HumanSize (Get-Item $p).Length)) }
         }
     }
+    Write-Title 'Parolier local (optionnel)'
+    $llmExe = @(Get-ChildItem -Path $LlmDir -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue) +
+              @(Get-ChildItem -Path $LlmDir -Filter 'llama.exe' -Recurse -ErrorAction SilentlyContinue)
+    if ($llmExe.Count -gt 0) { Write-Ok ("Serveur LLM : {0}" -f $llmExe[0].FullName) }
+    else { Write-Info 'Serveur LLM absent (option -AvecParolier).' }
+    foreach ($m in $ParolierModeles.Keys) {
+        $p = Join-Path $ParolierDir $ParolierModeles[$m].Fichier
+        if (Test-Path $p) { Write-Ok ("Parolier [{0}] : {1} ({2})" -f $m, $ParolierModeles[$m].Fichier, (Get-HumanSize (Get-Item $p).Length)) }
+    }
     Write-Title 'Python'
     $py = Test-Python
     if (-not $py) {
@@ -365,7 +401,7 @@ Write-Host "  Dossier d'installation : $Root" -ForegroundColor Gray
 Write-Host ''
 
 # --- 1. Detection du backend -----------------------------------------------
-Write-Title '1/4  Detection du materiel'
+Write-Title '1/5  Detection du materiel'
 $gpu = Get-GpuInfo
 
 $chosen = $Backend
@@ -395,7 +431,7 @@ $cudartZip = switch ($chosen) {
 }
 
 # --- 2. Moteur --------------------------------------------------------------
-Write-Title '2/4  Moteur audio.cpp'
+Write-Title '2/5  Moteur audio.cpp'
 New-Item -ItemType Directory -Path $EngineDir -Force | Out-Null
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
@@ -440,7 +476,7 @@ Write-Ok "Backend enregistre : $backendName"
 Write-Ok 'Moteur pret.'
 
 # --- 3. Modele --------------------------------------------------------------
-Write-Title '3/4  Modele YuE2-3B (GGUF)'
+Write-Title '3/5  Modele YuE2-3B (GGUF)'
 New-Item -ItemType Directory -Path $ModelDir -Force | Out-Null
 
 $wanted = if ($ToutesQualites) { @('q4', 'q8', 'bf16') } else { @($Qualite) }
@@ -463,8 +499,63 @@ foreach ($f in $files) {
     Save-FileFromUrl -Url "$HfBase/$f" -OutFile $local -ExpectedSize $expected -Label $f
 }
 
-# --- 4. Python --------------------------------------------------------------
-Write-Title '4/4  Python (interface)'
+# --- 4. Parolier local (optionnel) -------------------------------------------
+Write-Title '4/5  Parolier local (petit LLM hors ligne)'
+if (-not $AvecParolier) {
+    Write-Info 'Ignore (relancez avec -AvecParolier pour écrire vos paroles en local).'
+} else {
+    New-Item -ItemType Directory -Path $LlmDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $ParolierDir -Force | Out-Null
+
+    $llamaZip = switch ($chosen) {
+        'cuda12.4' { "llama-$LlamaBuild-bin-win-cuda-12.4-x64.zip" }
+        'cuda13.3' { "llama-$LlamaBuild-bin-win-cuda-13.3-x64.zip" }
+        'vulkan'   { "llama-$LlamaBuild-bin-win-vulkan-x64.zip" }
+        default    { "llama-$LlamaBuild-bin-win-cpu-x64.zip" }
+    }
+    $llamaRtZip = switch ($chosen) {
+        'cuda12.4' { "cudart-llama-bin-win-cuda-12.4-x64.zip" }
+        'cuda13.3' { "cudart-llama-bin-win-cuda-13.3-x64.zip" }
+        default    { $null }
+    }
+
+    $llmBackendFile = Join-Path $LlmDir 'backend.txt'
+    $llmRecorded = ''
+    if (Test-Path $llmBackendFile) { $llmRecorded = (Get-Content $llmBackendFile -Raw).Trim().ToLower() }
+    $llmWanted = if ($chosen -like 'cuda*') { 'cuda' } else { $chosen }
+
+    $srv = @(Get-ChildItem -Path $LlmDir -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue) +
+           @(Get-ChildItem -Path $LlmDir -Filter 'llama.exe' -Recurse -ErrorAction SilentlyContinue)
+    if (($srv.Count -gt 0) -and ($llmRecorded -eq $llmWanted)) {
+        Write-Ok ("Serveur LLM deja installe ({0}, backend {1}) - etape ignoree." -f $srv[0].Name, $llmWanted)
+    } else {
+        if ($srv.Count -gt 0) { Write-Warn2 "Le serveur LLM actuel ne correspond pas au backend $llmWanted : re-telechargement." }
+        $zipPath = Join-Path $TmpDir $llamaZip
+        Save-FileFromUrl -Url "$LlamaBase/$llamaZip" -OutFile $zipPath -ExpectedSize (Get-RemoteSize "$LlamaBase/$llamaZip") -Label "Serveur LLM ($chosen)"
+        Expand-ZipSafe -Zip $zipPath -Destination $LlmDir
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        if ($llamaRtZip) {
+            $rtPath = Join-Path $TmpDir $llamaRtZip
+            Save-FileFromUrl -Url "$LlamaBase/$llamaRtZip" -OutFile $rtPath -ExpectedSize (Get-RemoteSize "$LlamaBase/$llamaRtZip") -Label 'Bibliotheques CUDA (LLM)'
+            Expand-ZipSafe -Zip $rtPath -Destination $LlmDir
+            Remove-Item $rtPath -Force -ErrorAction SilentlyContinue
+        }
+        Set-Content -Path $llmBackendFile -Value $llmWanted -Encoding ASCII -NoNewline
+        Write-Ok 'Serveur LLM pret.'
+    }
+
+    $voulus = if ($Parolier -eq 'les-deux') { @('8b', '4b') } else { @($Parolier) }
+    foreach ($m in $voulus) {
+        $spec = $ParolierModeles[$m]
+        $local = Join-Path $ParolierDir $spec.Fichier
+        Save-FileFromUrl -Url ("https://huggingface.co/{0}/resolve/main/{1}" -f $spec.Repo, $spec.Fichier) `
+            -OutFile $local -ExpectedSize $spec.Taille -Label ("Parolier : {0}" -f $spec.Fichier)
+    }
+    Write-Ok 'Parolier pret.'
+}
+
+# --- 5. Python --------------------------------------------------------------
+Write-Title '5/5  Python (interface)'
 $py = Test-Python
 
 # --- Nettoyage --------------------------------------------------------------
@@ -479,6 +570,12 @@ Write-Host ''
 Write-Host "  Moteur    : $EngineDir  (backend $chosen)"
 Write-Host "  Modele    : $ModelDir"
 foreach ($q in $wanted) { Write-Host ("  Qualite   : {0}  -  VRAM {1}" -f $Qualites[$q].Nom, $Qualites[$q].Vram) }
+if ($AvecParolier) {
+    $voulus = if ($Parolier -eq 'les-deux') { @('8b', '4b') } else { @($Parolier) }
+    foreach ($m in $voulus) { Write-Host ("  Parolier  : {0}  -  VRAM {1}" -f $ParolierModeles[$m].Nom, $ParolierModeles[$m].Vram) }
+} else {
+    Write-Host '  Parolier  : non installe (option -AvecParolier, voir PAROLIER.md)'
+}
 Write-Host ''
 if (-not $py) {
     Write-Warn2 "Python manque : installez-le puis relancez 2-LANCER.bat"
